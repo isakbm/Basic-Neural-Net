@@ -122,6 +122,15 @@ struct NLayer
     void draw(int layerIndex, int nL, mat4 proj, mat4 view, int mvp_loc);
 };
 
+// Idea for better network structure, basically putting everything in one vector layers, and having special access
+// vector<NLayer> layers;
+// NLayer * const inLayer;     // Pointer to first element of layers
+// NLayer * const firstHiddenLayer;
+// NLayer * hiddenLayer; // By default points to second element of layers
+// NLayer * const outLayer;    // Pointer to last element of layers
+
+
+
 class NNet 
 {
     private:
@@ -293,7 +302,7 @@ void NNet::backProp(std::vector<float> target)
             }
             else
             {
-                prevLayer = &(hiddenLayers[i-1]);
+                prevLayer = &(hiddenLayers[i-1]);mak
             }
 
             node = &(layer->nodes[0]);  // loop over nodes in layer
@@ -319,6 +328,47 @@ void NNet::backProp(std::vector<float> target)
                 }
                 node++;
             }
+
+
+            // // CODE THAT IS DANGEROUS    unpredictable behavior ... but it still runs, have fun :D 
+            // // =========================================================================================================================
+            // NNode * prevLayerNode;
+            // // NLayer * prevLayer;
+            // // NNode* prevLayerNode; // get a handle on the nodes in the previous layer
+            // if (i == 0)
+            // {
+            //     prevLayerNode = &(inLayer.nodes[0]);
+            // }
+            // else
+            // {
+            //     prevLayerNode = &(hiddenLayers[i-1].nodes[0]);
+            // }
+
+            // node = &(layer->nodes[0]);  // loop over nodes in layer
+            // for (int j = 0; j < layer->numNodes; j++)
+            // {
+            //     float sum = 0.0;
+            //     NNode * nextNode = &(nextLayer->nodes[0]); // loop over nodes in next layer. We are computing sum[delta_j w_ji, j]
+            //     for (int k = 0; k < nextLayer->numNodes; k++)
+            //     {
+            //         sum += (nextNode->delta)*(nextNode->weights[j]);
+            //         nextNode++;
+            //     }
+            //     // node->delta = fmax(1.0 - (node->z)*(node->z), 0.0)*sum;
+            //     node->delta = exp(-0.7*(node->z)*(node->z))*sum;
+
+            //     // compute delta weights
+            //     // NNode * prevNode = &(prevLayer->nodes[0]);
+            //     for (int w = 0; w < node->numWeights; w++) // loop over weights (equivalently inputs)
+            //     {
+            //         node->deltaWeights[w] = rho*(node->delta)*(prevLayerNode->out); // rho*delta*input
+            //         // printf("size = %d | prevLayerNode->out (%d, %d) (%d) = %f \n ", prevNode->numWeights,i ,j, w, prevNode->out );
+            //         prevLayerNode ++;
+            //     }
+            //     node++;
+            // }
+            // // =========================================================================================================================
+
             layer++;
         }
 
@@ -327,7 +377,6 @@ void NNet::backProp(std::vector<float> target)
     // we have some code to keep track of an averaged error for monitoring sake
     if (iterations % 100 == 0)
     {
-
         avgError = sumError/100.0;
         sumError = 0.0;
     }
@@ -348,6 +397,7 @@ void NLayer::draw(int layerIndex, int numLayers, mat4 proj, mat4 view, int mvp_l
     {
         vec3 nodePos = vec3(2.5 + 5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
         // Draw node
+        // drawElement(float value, vec3 transl);
         glUniform1f(loc, node.out);
         mat4 model = translate( nodePos ); 
         mat4 MVP = proj*view*model;
@@ -358,8 +408,9 @@ void NLayer::draw(int layerIndex, int numLayers, mat4 proj, mat4 view, int mvp_l
         for (int i = 0; i < node.numWeights; i++)
         {
             vec3 weightPos = 2.0*nodePos + vec3(-2.0, 1.0 + 2.0*(i - 0.5*node.numWeights), -50.0);
+            
             glUniform1f(loc, node.weights[i]);
-            model = translate(weightPos); 
+            model = translate( weightPos ); 
             MVP = proj*view*model;
             glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -378,8 +429,6 @@ NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
 
 void NNet::forwardPropagate()
 {
-
-
     // propagate over the hidden layers
     if ( numLayers > 2 )
     {
@@ -442,8 +491,6 @@ void NNet::forwardPropagate()
         node->out = tanh(sum);
         node++;
     }
-
-
 }
 
 void NNet::randOuts()
@@ -508,12 +555,17 @@ void NNet::randWeights()
 
 void NNet::setInputs(std::vector<float> & in)
 {
+    auto iter = in.begin();   // look, auto is here really std::vector<float>::iterator
     if ( inLayer.numNodes == in.size() )
     {
-        for (int i = 0; i < inLayer.numNodes; i++) 
+        for (auto & node : inLayer.nodes)
         {
-            inLayer.nodes[i].out = in[i];
+            node.out = *(iter++);
         }
+        // for (int i = 0; i < inLayer.numNodes; i++)  // this is what silly me used to do -_-
+        // {
+        //     inLayer.nodes[i].out = in[i];
+        // }
     }
     else
         printf("dude you messed up, have to have as many input vals as there are input nodes\n");
@@ -551,6 +603,8 @@ void NNet::printWeights()
         node++;
     }
 }
+
+
 
 void NNet::print()
 {
@@ -658,7 +712,6 @@ void NNet::draw(mat4 proj, mat4 view, int mvp_loc)
     }
     inLayer.draw(0, numLayers, proj, view, mvp_loc);
     outLayer.draw(layerIndex, numLayers, proj, view, mvp_loc);
-
 }
 
 NNode NNet::getNode(int L, int N )
@@ -667,12 +720,13 @@ NNode NNet::getNode(int L, int N )
 }
 // =================================================================================================================================================================================================================================
 
-std::vector<unsigned int> data = {2,4,4,1};
+std::vector<unsigned int> data = {2,5,5,3,2, 1};
 NNet testNet = NNet(data);
 
 int main() {
 
-    for (int i = 0; i < 100; i++)
+
+    for (int i = 0; i < 500; i++)
     {
         mRand();
     }
@@ -768,6 +822,8 @@ void Draw() {
 
 
     // Draw network
+    // drawNetwork(testNet); TODO mofo
+
     testNet.draw(Projection, View, MVP_loc);
 
     glDisableVertexAttribArray(0);
@@ -778,6 +834,7 @@ void Draw() {
     glfwSwapBuffers(window);
 
 }
+
 
 
 void cleanGL() {
