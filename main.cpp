@@ -302,7 +302,7 @@ void NNet::backProp(std::vector<float> target)
             }
             else
             {
-                prevLayer = &(hiddenLayers[i-1]);mak
+                prevLayer = &(hiddenLayers[i-1]);
             }
 
             node = &(layer->nodes[0]);  // loop over nodes in layer
