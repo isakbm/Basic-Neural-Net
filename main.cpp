@@ -102,7 +102,6 @@ struct NNode
     int numWeights;
     std::vector<float> weights;
     std::vector<float> deltaWeights;
-    // std::vector<float> inputs;
     
     float delta;  // for error propagation
     float z;      // for storing the argument of the activation function
@@ -128,23 +127,18 @@ class NNet
 
         unsigned int numLayers;
 
-        // New way of dealing with layers, 
         std::vector<NLayer> layers;
 
         std::vector<NLayer>::iterator inputLayer;               // these iterators will be initialized to "point" to their descriptive named locations
         std::vector<NLayer>::iterator firstHiddenLayer;
+        std::vector<NLayer>::iterator lastHiddenLayer;
         std::vector<NLayer>::iterator outputLayer;
-        // ==============================================
 
-        NLayer inLayer; 
-        std::vector<NLayer> hiddenLayers;
-        NLayer outLayer;
-
-        float rho;        // learning rate;
-        unsigned int iterations; // learning steps
+        float rho;                  // learning rate;
+        unsigned int iterations;    // learning steps
         float avgError; 
         float sumError;
-        bool silent = false;
+        bool silent = false;        // "should we shut up (aka not print state of network) ? "
         
     public:
         
@@ -158,24 +152,18 @@ class NNet
         void backProp(std::vector<float> target);
         void setRho(float rate);
         void updateWeights();
-        void printWeights();
-        void printOutputs();
-        void printDeltas();
+
         void print();
         void test();
         void setSilent(bool b);
-        unsigned int getIterations();
-        NNode getNode(int L, int N );
-
-
 };
 
 NNode::NNode(unsigned int num)
 {
     numWeights = num;
     weights.assign(numWeights, 1.0); 
-    deltaWeights.assign(numWeights, 1.0); 
-    // inputs.assign(numWeights, 1.0); 
+    deltaWeights.assign(numWeights, 0.0); 
+    delta = 0.0;
 }
 
 NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
@@ -184,45 +172,19 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
     numLayers = numNPL.size(); // set total number of layers
     rho = 0.01;  // set the default learning rate
 
-    // Current thing here
-    // =========================================================
-    // construct input and output layer
-    inLayer  = NLayer(numNPL.front(), 1);
-    outLayer = NLayer(numNPL.back(), numNPL[numLayers-2]);
-
-    // construct hidden layers
-    if (numLayers > 2)
-    {
-        hiddenLayers.assign(numLayers - 2, NLayer(1,1));  
-        for (int n = 0; n < (numLayers - 2); n++)
-        {
-            hiddenLayers[n] = NLayer(numNPL[n+1], numNPL[n]);
-        }
-    }
-    // =========================================================
-
-
-    // New thing here
-    // =========================================================
     std::vector<unsigned int> numWPN;                           // num of weights per node
     numWPN.push_back(1);                                        // the input layer always has one weight per node
     numWPN.insert(end(numWPN), begin(numNPL), end(numNPL));     // the rest have num weights = num of nodes on previous layer
 
-    for (int n = 0; n < numNPL.size() - 1; n++)
+    for (int n = 0; n < numNPL.size(); n++)
     {
         layers.push_back(NLayer(numNPL[n], numWPN[n]));
     }
 
     inputLayer       = layers.begin();
     firstHiddenLayer = layers.begin() + 1;
-    outputLayer      = layers.end();
-
-    
-
-    // printf("first layer wpn = %d \n \n ", firstHiddenLayer->nodes[0].numWeights);
-
-    // =========================================================
-
+    lastHiddenLayer  = layers.end() - 2;
+    outputLayer      = layers.end() - 1;
 }
 
 void NNet::setRho(float rate)
@@ -232,177 +194,69 @@ void NNet::setRho(float rate)
 
 void NNet::updateWeights()
 {
-    NNode * node = &(outLayer.nodes[0]);  // update the output layer
-    for (int i = 0; i < outLayer.numNodes; i++)
+    for (auto layer = firstHiddenLayer; layer != layers.end(); layer++)
     {
-        for (int w = 0; w < node->numWeights; w++)
+        for (auto & node : layer->nodes)
         {
-            (node->weights[w]) += (node->deltaWeights[w]);
-        }
-        node++;
-    }
-
-    NLayer * layer = &(hiddenLayers[0]);
-    for (int i = 0; i < numLayers-2 ; i++)
-    {
-        node = &(layer->nodes[0]);
-        for (int j = 0; j < layer->numNodes; j++)
-        {
-            for (int w = 0; w < node->numWeights; w++)
+            for (int wIndex = 0; wIndex < node.numWeights; wIndex++)
             {
-                (node->weights[w]) += (node->deltaWeights[w]);
-                if (fabs(node->weights[w]) > 100.0)
-                {
-                    // printf("Warning delta weight : %f  possibly large delta = %f \n", node->deltaWeights[w], node->delta);
-                }
-
+                node.weights[wIndex] += node.deltaWeights[wIndex];
             }
-
-
-            node++;
         }
-        layer++;
     }
-
 }
-unsigned int NNet::getIterations()
-{
-    return iterations;
-}
-
-
 
 void NNet::backProp(std::vector<float> target)
 {
     iterations++;
-    if (target.size() != outLayer.numNodes)
+    if (target.size() != outputLayer->numNodes)
     {
         printf("Warning! Failed to backprop: check that number of targets equals number of nodes in output layer \n");
     }
     else
     {
-        // backprop for output layer
-        NNode * node = &(outLayer.nodes[0]);
-        for (int i = 0; i < outLayer.numNodes; i++) // loop over nodes
-        {
-            // node->delta = (target[i] - node->out)*fmax(1.0 - (node->z)*(node->z), 0.0); // (o - t)*(1 - z^2)  this is using 1 - z^2 as the approx tanh'(z) 
-            node->delta = (target[i] - node->out)*exp(-0.7*(node->z)*(node->z)); // (o - t)*(1 - z^2)  this is using 1 - z^2 as the approx tanh'(z) 
+        // computation for the output layer
+        auto outNode = outputLayer->nodes.begin();
+        for (float t : target)
+        {   
+            outNode->delta = (t - outNode->out)*exp(-0.7*(outNode->z)*(outNode->z)); // (o - t)*(1 - z^2)  this is using 1 - z^2 as the approx tanh'(z) 
 
-            // compute deltaWeight
-            NLayer * prevLayer;
-            // NNode * prevLayerNode;  // get a handle on the nodes in the previous layer
-            if (numLayers == 2)
+            auto prevLayer = outputLayer -1;
+            auto prevNode = prevLayer->nodes.begin();
+
+            for (auto & deltaW : outNode->deltaWeights)
             {
-                // prevLayerNode = &(inLayer.nodes[0]);
-                prevLayer = &(inLayer);
-            }
-            else
-            {
-                // prevLayerNode = &(hiddenLayers[numLayers-3].nodes[0]);
-                prevLayer = &(hiddenLayers[numLayers-3]);
-            }
-            NNode * prevNode = &(prevLayer->nodes[0]);
-            for (int w = 0; w < node->numWeights; w++) // loop over weights (equivalently inputs)
-            {
-                node->deltaWeights[w] = rho*(node->delta)*(prevNode->out); // rho*delta*input
+                deltaW = rho*(outNode->delta)*(prevNode->out);
                 prevNode++;
-                // prevLayerNode++;
             }
-            node++;
+            outNode++;
         }
 
-        // backprop for hidden layers
-        NLayer * layer = &(hiddenLayers[0]);
-        for (int i = 0; i < numLayers -2 ; i++) // loop over layers
-        {      
-            NLayer * nextLayer; // get a handle on the next layer
-            if (i == numLayers - 3)
-            {
-                nextLayer = &(outLayer);
-            }
-            else
-            {
-                nextLayer = &(hiddenLayers[i+1]);
-            }
+        // computation for the hidden layers
+        for (auto layer = lastHiddenLayer; layer != inputLayer; layer--)   // note that this loop goes "backwards" that is important
+        {
+            auto prevLayer = layer -1;
+            auto nextLayer = layer +1;
 
-            NLayer * prevLayer;
-            // NNode* prevLayerNode; // get a handle on the nodes in the previous layer
-            if (i == 0)
-            {
-                prevLayer = &(inLayer);
-            }
-            else
-            {
-                prevLayer = &(hiddenLayers[i-1]);
-            }
-
-            node = &(layer->nodes[0]);  // loop over nodes in layer
-            for (int j = 0; j < layer->numNodes; j++)
+            int wIndex = 0;
+            for (auto & node : layer->nodes)
             {
                 float sum = 0.0;
-                NNode * nextNode = &(nextLayer->nodes[0]); // loop over nodes in next layer. We are computing sum[delta_j w_ji, j]
-                for (int k = 0; k < nextLayer->numNodes; k++)
+                for (auto & nextNode : nextLayer->nodes)
                 {
-                    sum += (nextNode->delta)*(nextNode->weights[j]);
-                    nextNode++;
+                    sum += (nextNode.delta)*(nextNode.weights[wIndex]);
                 }
-                // node->delta = fmax(1.0 - (node->z)*(node->z), 0.0)*sum;
-                node->delta = exp(-0.7*(node->z)*(node->z))*sum;
+                node.delta = exp(-0.7*(node.z)*(node.z))*sum;
+                wIndex++;
 
-                // compute delta weights
-                NNode * prevNode = &(prevLayer->nodes[0]);
-                for (int w = 0; w < node->numWeights; w++) // loop over weights (equivalently inputs)
+                int dIndex = 0;
+                for (auto & prevNode : prevLayer->nodes)
                 {
-                    node->deltaWeights[w] = rho*(node->delta)*(prevNode->out); // rho*delta*input
-                    // printf("size = %d | prevLayerNode->out (%d, %d) (%d) = %f \n ", prevNode->numWeights,i ,j, w, prevNode->out );
-                    prevNode ++;
+                    node.deltaWeights[dIndex] = rho*(node.delta)*(prevNode.out);
+                    dIndex++;
                 }
-                node++;
             }
-
-
-            // // CODE THAT IS DANGEROUS    unpredictable behavior ... but it still runs, have fun :D 
-            // // =========================================================================================================================
-            // NNode * prevLayerNode;
-            // // NLayer * prevLayer;
-            // // NNode* prevLayerNode; // get a handle on the nodes in the previous layer
-            // if (i == 0)
-            // {
-            //     prevLayerNode = &(inLayer.nodes[0]);
-            // }
-            // else
-            // {
-            //     prevLayerNode = &(hiddenLayers[i-1].nodes[0]);
-            // }
-
-            // node = &(layer->nodes[0]);  // loop over nodes in layer
-            // for (int j = 0; j < layer->numNodes; j++)
-            // {
-            //     float sum = 0.0;
-            //     NNode * nextNode = &(nextLayer->nodes[0]); // loop over nodes in next layer. We are computing sum[delta_j w_ji, j]
-            //     for (int k = 0; k < nextLayer->numNodes; k++)
-            //     {
-            //         sum += (nextNode->delta)*(nextNode->weights[j]);
-            //         nextNode++;
-            //     }
-            //     // node->delta = fmax(1.0 - (node->z)*(node->z), 0.0)*sum;
-            //     node->delta = exp(-0.7*(node->z)*(node->z))*sum;
-
-            //     // compute delta weights
-            //     // NNode * prevNode = &(prevLayer->nodes[0]);
-            //     for (int w = 0; w < node->numWeights; w++) // loop over weights (equivalently inputs)
-            //     {
-            //         node->deltaWeights[w] = rho*(node->delta)*(prevLayerNode->out); // rho*delta*input
-            //         // printf("size = %d | prevLayerNode->out (%d, %d) (%d) = %f \n ", prevNode->numWeights,i ,j, w, prevNode->out );
-            //         prevLayerNode ++;
-            //     }
-            //     node++;
-            // }
-            // // =========================================================================================================================
-
-            layer++;
         }
-
     }
 
     // we have some code to keep track of an averaged error for monitoring sake
@@ -413,7 +267,7 @@ void NNet::backProp(std::vector<float> target)
     }
     for (int t = 0; t < target.size(); t++)
     {
-        sumError += (target[t] - outLayer.nodes[t].out)*(target[t] - outLayer.nodes[t].out)/target.size();
+        sumError += (target[t] - outputLayer->nodes[t].out)*(target[t] - outputLayer->nodes[t].out)/target.size();
     }
 }
 
@@ -451,7 +305,6 @@ void NLayer::draw(int layerIndex, int numLayers, mat4 proj, mat4 view, int mvp_l
     }
 }
 
-
 NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
 {
     numNodes = num;
@@ -463,7 +316,8 @@ void NNet::test()
     int layerID = 0, nodeID = 0;
     printf("testing new imp: \n");
 
-    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    printf("size = %d\n", layers.size());
+    for (auto layer = firstHiddenLayer; layer != layers.end(); ++layer)
     {
         auto prevLayer = std::prev(layer);
         for (NNode & node : layer->nodes)
@@ -482,14 +336,19 @@ void NNet::test()
         }
         layerID++;
     }
+
+    printf("\n\n");
+    layerID = 0;
+    for (auto layer = lastHiddenLayer; layer != inputLayer; layer--)
+    {
+        printf("(L,N) = (%d,%d)\n" ,layerID, layer->nodes.size());
+        layerID++;
+    }
 }
 
 void NNet::forwardPropagate()
 {
-    // ======================================================================
-    // New implementation
-
-    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    for (auto layer = firstHiddenLayer; layer != layers.end(); ++layer)
     {
         auto prevLayer = std::prev(layer);
         for (NNode & node : layer->nodes)
@@ -505,324 +364,94 @@ void NNet::forwardPropagate()
             node.out = tanh(sum);
         }
     }
-
-    // copying values from new implementation to the old one in order to test the new implementation 
-    auto hidden = hiddenLayers.begin();
-    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
-    {
-        auto hNode = hidden->nodes.begin();
-        for (NNode & node : layer->nodes)
-        {
-            hNode->z = node.z;
-            hNode->out = node.out;
-            hNode++;
-        }
-        hidden++;
-    }
-
-
-    // ======================================================================
-
-    // propagate over the hidden layers
-    if ( numLayers > 2 )
-    {
-        NLayer * layer = &hiddenLayers[0];  // loop over layers
-        for (int i = 0; i < numLayers-2; i++)
-        {
-            NNode * node = &(layer->nodes[0]); // loop over nodes
-            for (int j = 0; j < layer->numNodes; j++)
-            {
-                float sum = 0.0;
-                if (i == 0)
-                {
-                    for (int k = 0; k < node->numWeights; k++)
-                    {
-                        sum += (node->weights[k])*(inLayer.nodes[k].out); 
-                    }
-                    node->z = sum;
-                    node->out = tanh(sum);
-                }
-                else
-                {
-                    for (int k = 0; k < node->numWeights; k++)
-                    {
-                        sum += (node->weights[k])*(hiddenLayers[i-1].nodes[k].out); 
-                    }
-                    node->z = sum;
-                    node->out = tanh(sum);
-                }
-                node++;
-            }
-            layer++;
-        }
-    }
-
-    // pointer to previous layer nodes
-    // NNode * prevNode;
-    NLayer * prevLayer;
-    if (numLayers > 2 )
-    {
-        prevLayer = &(hiddenLayers[numLayers-3]);
-        // prevNode = &(hiddenLayers[numLayers-3].nodes[0]);
-    }
-    else
-    {
-        prevLayer = &(inLayer);
-        // prevNode = &(inLayer.nodes[0]);
-    }
-
- 
-    // propagate to the output layer
-    NNode * node = &(outLayer.nodes[0]);
-    NNode * prevNode = &(prevLayer->nodes[0]);
-    for (int j = 0; j < outLayer.numNodes; j++)
-    {
-        float sum = 0.0;
-
-        for (int k = 0; k < node->numWeights; k++)
-        {
-            sum += (outLayer.nodes[j].weights[k])*(prevLayer->nodes[k].out); 
-            // printf("j = %d, temp = %f\n", j, temp);
-            prevNode++;
-        }
-        node->z = sum;
-        node->out = tanh(sum);
-        node++;
-    }
-}
-
-void NNet::randOuts()
-{
-    // randomize outputs of neurons in hidden layers
-    if ( numLayers > 2)
-    {
-        NLayer * layer = &hiddenLayers[0];
-        for (int i = 0; i < numLayers-2; i++)
-        {
-            NNode * node = &(layer->nodes[0]);
-            for (int j = 0; j < layer->numNodes; j++)
-            {
-                node->out = 0.5;//mRand();
-                printf("Node %d = %f \n", j, node->out);
-                node++;
-            }
-            layer++;
-        }        
-    }
-
 }
 
 void NNet::randWeights()
 {
-    // hidden layer weights get randomized
-    if (numLayers > 2)
+    for (auto layer = firstHiddenLayer; layer != layers.end(); layer++)
     {
-        NLayer * layer = &hiddenLayers[0];  
-        for (int i = 0; i < numLayers-2; i++)
+        for (auto & node : layer->nodes)
         {
-            NNode * node = &(layer->nodes[0]);
-            for (int j = 0; j < layer->numNodes; j++)
+            for (auto & weight : node.weights)
             {
-                float total = 0.0;
-                for (int k = 0; k < node->numWeights; k++)
-                {
-                    node->weights[k] = 0.5 + 0.5*mRand();
-                    // printf("weight (%d,%d, %d) = %f\n", i,j,k, node->weights[k]);
-                    total += node->weights[k];
-                }
-                node++;
+                weight = 0.5 + 0.5*mRand();
             }
-            layer++;
         }
-    }
-    
-    //output layer weights get randomized
-    NNode* node = &(outLayer.nodes[0]);  
-    for (int j = 0; j < outLayer.numNodes; j++)
-    {
-        float total = 0.0;
-        for (int k = 0; k < node->numWeights; k++)
-        {
-            node->weights[k] = 0.5 + 0.5*mRand();
-            total += node->weights[k];
-        }
-        node++;
     }
 }
 
-
 void NNet::setInputs(std::vector<float> & in)
 {
-    if ( inLayer.numNodes == in.size() )
+    if ( inputLayer->numNodes == in.size() )
     {
-        auto iter = in.begin();   // look, auto is here really std::vector<float>::iterator
-        for (auto & node : inLayer.nodes)
+        auto inNode = inputLayer->nodes.begin();
+        for (auto input : in)
         {
-            node.out = *(iter++);
+            inNode->z = input;
+            inNode->out = input; 
+            inNode++;
         }
-
-        // for (int i = 0; i < inLayer.numNodes; i++)  // this is what silly me used to do -_-
-        // {
-        //     inLayer.nodes[i].out = in[i];
-        // }
     }
     else
         printf("dude you messed up, have to have as many input vals as there are input nodes\n");
 }
 
-void NNet::printWeights()
-{
-    if (numLayers > 2)
-    {
-        NLayer * layer = &hiddenLayers[0];    // weights on hidden layer
-        for (int i = 0; i < numLayers-2; i++)
-        {
-            NNode * node = &(layer->nodes[0]);
-            for (int j = 0; j < layer->numNodes; j++)
-            {
-                for (int k = 0; k < node->numWeights; k++)
-                {
-                    printf("weight (%d,%d, %d) = %f\n", i,j,k, node->weights[k]);
-
-                }
-                node ++;
-            }
-            layer++;
-        }
-    }
-
-    NNode * node = &(outLayer.nodes[0]);   // weights output layer
-    for (int j = 0; j < outLayer.numNodes; j++)
-    {
-        for (int k = 0; k < node->numWeights; k++)
-        {
-            printf("out weight (%d) = %f\n", j, node->weights[k]);
-
-        }
-        node++;
-    }
-}
-
-
-
 void NNet::print()
 {
     if (silent)
         return;
+
     // Print Network status
+    printf("-----------------------------------------------------------------------\n");
     printf("Iterations : %d \n", iterations);
     printf("Current avg error : %f \n", avgError);
     printf("Outputs = { ");
-    for (int o = 0 ; o < outLayer.numNodes-1; o++)
+    for (int o = 0 ; o < outputLayer->numNodes-1; o++)
     {
-        printf("%f, ", outLayer.nodes[o].out);
+        printf("%f, ", outputLayer->nodes[o].out);
     }
-    printf("%f } \n", outLayer.nodes[outLayer.numNodes-1].out);
+    printf("%f } \n\n\n", outputLayer->nodes[outputLayer->numNodes-1].out);
 
-    // hidden layers
-    NLayer *  layer = &(hiddenLayers[0]);
-    for (int i = 0; i < numLayers-2; i++)
+    int layerNum = 0;
+    for (auto layer = inputLayer; layer != layers.end(); layer++)
     {
-        NNode * node = &(layer->nodes[0]);
-        for (int j = 0; j < layer->numNodes; j++)
+        printf("Layer %d : \t o  = ", layerNum);
+        for (auto & node : layer->nodes)
         {
-
-            // Print node name
-            printf("Node(%d, %d) : ", i,j);
-            
-            // Print output
-            printf("o = %f | ", node->out);
-
-            // Print delta
-            printf("delta = %f | " , node->delta);
-
-            // Print weights
-           
-            printf("w = ");
-            for (int w = 0; w < node->numWeights; w++)
-            {
-                printf("%f , ", node->weights[w]);
-            }
-            printf(" | ");
-
-            // Print Delta weights
-            printf("Dw = ");
-            for (int w = 0; w < node->numWeights; w++)
-            {
-                printf("%f , ", node->deltaWeights[w]);
-            }
-
-            printf("\n");
-
-
-
-            node++;
+            printf("%f, ", node.out);
         }
         printf("\n");
-
-
-        layer++;
-    }
-
-    // output layer
-    layer = &(outLayer);
-    NNode * node = &(layer->nodes[0]);
-    for (int i = 0; i < layer->numNodes; i++)
-    {
-             // Print node name
-            printf("Node(%d) : ", i);
-            
-            // Print output
-            printf("o = %f | ", node->out);
-
-            // Print delta
-            printf("delta = %f | " , node->delta);
-
-            // Print weights
-           
-            printf("w = ");
-            for (int w = 0; w < node->numWeights; w++)
-            {
-                printf("%f , ", node->weights[w]);
-            }
-            printf(" | ");
-
-            // Print Delta weights
-            printf("Dw = ");
-            for (int w = 0; w < node->numWeights; w++)
-            {
-                printf("%f , ", node->deltaWeights[w]);
-            }
-
-            printf("\n");   
-        node++;
-    }
-    printf("\n");
-}
-
-void NNet::printDeltas()
-{
-    if (numLayers > 2)
-    {
-        NLayer * layer = &hiddenLayers[0];    // weights on hidden layer
-        for (int i = 0; i < numLayers-2; i++)
+        printf("\t\t z  = ");
+        for (auto & node : layer->nodes)
         {
-            NNode * node = &(layer->nodes[0]);
-            for (int j = 0; j < layer->numNodes; j++)
-            {
-                printf("delta (%d, %d) = %f \n ", i,j ,node->delta);
-                node ++;
-            }
-            layer++;
+            printf("%f, ", node.z);
         }
-    }
+        printf("\n\n");
 
 
-    NNode * node = &(outLayer.nodes[0]);   // weights output layer
-    for (int j = 0; j < outLayer.numNodes; j++)
-    {
-        printf("delta out (%d) = %f \n ", j ,node->delta);
-        node++;
+        int nodeID = 1;      
+        for (auto & node : layer->nodes)
+        {
+
+            printf("Node %d : " , nodeID);
+            printf("\t w  = ");
+            for (auto & weight : node.weights)
+            {
+                printf("%f, ", weight);
+            }
+            printf("\n");
+            printf("d = %f \t Dw = ", node.delta);
+            for (auto & deltaW : node.deltaWeights)
+            {
+                printf("%f, ", deltaW);
+            }
+            nodeID++;
+            printf("\n");
+            printf("\n");
+        }
+
+        layerNum++;
+        printf("\n\n");
     }
 }
 
@@ -831,84 +460,48 @@ void NNet::setSilent(bool b)
     silent = b;
 }
 
-void NNet::printOutputs()
-{
-    NNode* node = &(outLayer.nodes[0]);
-    printf("outputs : ");
-    for (int i = 0; i < outLayer.numNodes; i++)
-    {
-        printf("%f , ", node->out);
-        node++;
-    }
-    printf("\n");
-}
-
 void NNet::draw(mat4 proj, mat4 view, int mvp_loc)
 {  
-    int layerIndex = 1;
-    for (NLayer layer : hiddenLayers)
+    int layerID = 1;
+    for (auto & layer : layers)
     {
-        layer.draw(layerIndex, numLayers, proj, view, mvp_loc);
-        layerIndex++;
+        layer.draw(layerID, numLayers, proj, view, mvp_loc);
+        layerID++;
     }
-    inLayer.draw(0, numLayers, proj, view, mvp_loc);
-    outLayer.draw(layerIndex, numLayers, proj, view, mvp_loc);
 }
 
-NNode NNet::getNode(int L, int N )
-{
-    if (L == 0)
-    {
-        return inLayer.nodes[N];
-    }
-    else if (L == numLayers-1)
-    {
-        return outLayer.nodes[N];
-    }
-    else
-    {
-        return hiddenLayers[L].nodes[N];
-    }
-}
 // =================================================================================================================================================================================================================================
 
-std::vector<unsigned int> data = {7,7,5,3,5,7,7};
+std::vector<unsigned int> data = {2,4,3,1};
 NNet testNet = NNet(data);
 
 int main() {
 
-    testNet.setSilent(true);  // makes NNet::print() silent 
+    initGLFWandGLEW();
+    initGL();
 
 
-    for (int i = 0; i < 500; i++)
+
+
+
+    testNet.setSilent(false);  // makes NNet::print() silent 
+
+    for (int i = 0; i < 1500; i++)
     {
         mRand();
     }
 
-    std::vector<float> input = {1.0,1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-    std::vector<float> target = {0.0};
-
-
-    testNet.setInputs(input);
     testNet.randWeights();
     testNet.setRho(0.5);
-    // testNet.forwardPropagate();
-    testNet.forwardPropagate();
 
     testNet.print();
-    printf("\n");
-    int L = 6, N = 0;
-    printf("node(%d,%d) = %f \n", L, N, testNet.getNode(L,N).out);
 
 
     //Test new implementation
-    testNet.test();
+    // testNet.test();
 
 
 
-
-    initGLFWandGLEW();
-    initGL();
 
     while ( !glfwWindowShouldClose(window)) {   
         Draw();
@@ -970,22 +563,25 @@ void Draw() {
     {  
         // toggleNetUpdate = 0;
 
-        // float x = int(1.0 + mRand());
-        // float y = int(1.0 + mRand());
-        // float out = int(x) && int(y);
+        float x = int(1.0 + mRand());
+        float y = int(1.0 + mRand());
+        float out = int(x) && int(y);
         // printf("(%f, %f) --> %f\n", x,y,out);
-        // std::vector<float> vecIn = {x, y};
-        // std::vector<float> target = {out};
+        std::vector<float> vecIn = {x, y};
+        std::vector<float> target = {out};
 
-        std::vector<float> input = {1.0,1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-        // testNet.setInputs(vecIn);
-        // testNet.backProp(target);
-        testNet.setInputs(input);
+        testNet.setInputs(vecIn);
         testNet.forwardPropagate();
-        
-        testNet.backProp(input);
-        testNet.updateWeights();
+        testNet.backProp(target);
+        printf("target = ");
+        for (auto t : target)
+        {
+            printf("%f, ");
+        }
+        printf("\n");
+
         testNet.print();
+        testNet.updateWeights();
 
     }
 
@@ -1137,12 +733,9 @@ void windowsize_callback(GLFWwindow * /*win*/, int width, int height) {
 void key_callback(GLFWwindow* win, int key, int /*scancode*/, int action, int /*mods*/) {
     // called if a keyboard key is pressed or released
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-    {
-        // printf("Pressed space key \n"); 
+    { 
         toggleNetUpdate = !toggleNetUpdate;
-        // testNet.printWeights();
-        // printf("Iterations : %d \n", testNet.getIterations());
-        // testNet.printOutputs();
+        
     }
     if (key == GLFW_KEY_ESCAPE) {
         glfwSetWindowShouldClose(win, GL_TRUE);
