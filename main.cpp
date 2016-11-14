@@ -122,20 +122,19 @@ struct NLayer
     void draw(int layerIndex, int nL, mat4 proj, mat4 view, int mvp_loc);
 };
 
-// Idea for better network structure, basically putting everything in one vector layers, and having special access
-// vector<NLayer> layers;
-// NLayer * const inLayer;     // Pointer to first element of layers
-// NLayer * const firstHiddenLayer;
-// NLayer * hiddenLayer; // By default points to second element of layers
-// NLayer * const outLayer;    // Pointer to last element of layers
-
-
-
 class NNet 
 {
     private:
 
         unsigned int numLayers;
+
+        // New way of dealing with layers, 
+        std::vector<NLayer> layers;
+
+        std::vector<NLayer>::iterator inputLayer;               // these iterators will be initialized to "point" to their descriptive named locations
+        std::vector<NLayer>::iterator firstHiddenLayer;
+        std::vector<NLayer>::iterator outputLayer;
+        // ==============================================
 
         NLayer inLayer; 
         std::vector<NLayer> hiddenLayers;
@@ -145,6 +144,7 @@ class NNet
         unsigned int iterations; // learning steps
         float avgError; 
         float sumError;
+        bool silent = false;
         
     public:
         
@@ -162,6 +162,8 @@ class NNet
         void printOutputs();
         void printDeltas();
         void print();
+        void test();
+        void setSilent(bool b);
         unsigned int getIterations();
         NNode getNode(int L, int N );
 
@@ -176,15 +178,17 @@ NNode::NNode(unsigned int num)
     // inputs.assign(numWeights, 1.0); 
 }
 
-NNet::NNet(std::vector<unsigned int> & data)
+NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
 {
     iterations = 0;
-    // set total number of layers
-    numLayers = data.size();
+    numLayers = numNPL.size(); // set total number of layers
+    rho = 0.01;  // set the default learning rate
 
+    // Current thing here
+    // =========================================================
     // construct input and output layer
-    inLayer  = NLayer(data.front(), 1);
-    outLayer = NLayer(data.back(), data[numLayers-2]);
+    inLayer  = NLayer(numNPL.front(), 1);
+    outLayer = NLayer(numNPL.back(), numNPL[numLayers-2]);
 
     // construct hidden layers
     if (numLayers > 2)
@@ -192,12 +196,32 @@ NNet::NNet(std::vector<unsigned int> & data)
         hiddenLayers.assign(numLayers - 2, NLayer(1,1));  
         for (int n = 0; n < (numLayers - 2); n++)
         {
-            hiddenLayers[n] = NLayer(data[n+1], data[n]);
+            hiddenLayers[n] = NLayer(numNPL[n+1], numNPL[n]);
         }
     }
+    // =========================================================
 
-    // set the default learning rate
-    rho = 0.01;
+
+    // New thing here
+    // =========================================================
+    std::vector<unsigned int> numWPN;                           // num of weights per node
+    numWPN.push_back(1);                                        // the input layer always has one weight per node
+    numWPN.insert(end(numWPN), begin(numNPL), end(numNPL));     // the rest have num weights = num of nodes on previous layer
+
+    for (int n = 0; n < numNPL.size() - 1; n++)
+    {
+        layers.push_back(NLayer(numNPL[n], numWPN[n]));
+    }
+
+    inputLayer       = layers.begin();
+    firstHiddenLayer = layers.begin() + 1;
+    outputLayer      = layers.end();
+
+    
+
+    // printf("first layer wpn = %d \n \n ", firstHiddenLayer->nodes[0].numWeights);
+
+    // =========================================================
 
 }
 
@@ -246,6 +270,8 @@ unsigned int NNet::getIterations()
     return iterations;
 }
 
+
+
 void NNet::backProp(std::vector<float> target)
 {
     iterations++;
@@ -263,19 +289,24 @@ void NNet::backProp(std::vector<float> target)
             node->delta = (target[i] - node->out)*exp(-0.7*(node->z)*(node->z)); // (o - t)*(1 - z^2)  this is using 1 - z^2 as the approx tanh'(z) 
 
             // compute deltaWeight
-            NNode * prevLayerNode;  // get a handle on the nodes in the previous layer
+            NLayer * prevLayer;
+            // NNode * prevLayerNode;  // get a handle on the nodes in the previous layer
             if (numLayers == 2)
             {
-                prevLayerNode = &(inLayer.nodes[0]);
+                // prevLayerNode = &(inLayer.nodes[0]);
+                prevLayer = &(inLayer);
             }
             else
             {
-                prevLayerNode = &(hiddenLayers[numLayers-3].nodes[0]);
+                // prevLayerNode = &(hiddenLayers[numLayers-3].nodes[0]);
+                prevLayer = &(hiddenLayers[numLayers-3]);
             }
+            NNode * prevNode = &(prevLayer->nodes[0]);
             for (int w = 0; w < node->numWeights; w++) // loop over weights (equivalently inputs)
             {
-                node->deltaWeights[w] = rho*(node->delta)*(prevLayerNode->out); // rho*delta*input
-                prevLayerNode++;
+                node->deltaWeights[w] = rho*(node->delta)*(prevNode->out); // rho*delta*input
+                prevNode++;
+                // prevLayerNode++;
             }
             node++;
         }
@@ -427,8 +458,71 @@ NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
     nodes.assign(numNodes, NNode(weightsPerNode));
 }
 
+void NNet::test()
+{
+    int layerID = 0, nodeID = 0;
+    printf("testing new imp: \n");
+
+    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    {
+        auto prevLayer = std::prev(layer);
+        for (NNode & node : layer->nodes)
+        {
+            printf("(L,N) = (%d,%d)\n" ,layerID, nodeID);
+            float sum = 0.0;
+            auto prevLayerNode = prevLayer->nodes.begin();
+            for (float weight : node.weights)
+            {
+                sum += weight*(prevLayerNode->out);
+                prevLayerNode++;
+            }
+            node.z = sum;
+            node.out = tanh(sum);
+            nodeID++;
+        }
+        layerID++;
+    }
+}
+
 void NNet::forwardPropagate()
 {
+    // ======================================================================
+    // New implementation
+
+    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    {
+        auto prevLayer = std::prev(layer);
+        for (NNode & node : layer->nodes)
+        {
+            float sum = 0.0;
+            auto prevLayerNode = prevLayer->nodes.begin();
+            for (float weight : node.weights)
+            {
+                sum += weight*(prevLayerNode->out);
+                prevLayerNode++;
+            }
+            node.z = sum;
+            node.out = tanh(sum);
+        }
+    }
+
+    // copying values from new implementation to the old one in order to test the new implementation 
+    auto hidden = hiddenLayers.begin();
+    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    {
+        auto hNode = hidden->nodes.begin();
+        for (NNode & node : layer->nodes)
+        {
+            hNode->z = node.z;
+            hNode->out = node.out;
+            hNode++;
+        }
+        hidden++;
+    }
+
+
+    // ======================================================================
+
     // propagate over the hidden layers
     if ( numLayers > 2 )
     {
@@ -464,27 +558,31 @@ void NNet::forwardPropagate()
     }
 
     // pointer to previous layer nodes
-    NNode * prevNode;
+    // NNode * prevNode;
+    NLayer * prevLayer;
     if (numLayers > 2 )
     {
-        prevNode = &(hiddenLayers[numLayers-3].nodes[0]);
+        prevLayer = &(hiddenLayers[numLayers-3]);
+        // prevNode = &(hiddenLayers[numLayers-3].nodes[0]);
     }
     else
     {
-        prevNode = &(inLayer.nodes[0]);
+        prevLayer = &(inLayer);
+        // prevNode = &(inLayer.nodes[0]);
     }
 
  
     // propagate to the output layer
     NNode * node = &(outLayer.nodes[0]);
+    NNode * prevNode = &(prevLayer->nodes[0]);
     for (int j = 0; j < outLayer.numNodes; j++)
     {
         float sum = 0.0;
 
         for (int k = 0; k < node->numWeights; k++)
         {
-            // sum += (node->weights[k])*(hiddenLayers[numLayers-3].nodes[k].out); 
-            sum += (node->weights[k])*(prevNode->out); 
+            sum += (outLayer.nodes[j].weights[k])*(prevLayer->nodes[k].out); 
+            // printf("j = %d, temp = %f\n", j, temp);
             prevNode++;
         }
         node->z = sum;
@@ -529,7 +627,7 @@ void NNet::randWeights()
                 for (int k = 0; k < node->numWeights; k++)
                 {
                     node->weights[k] = 0.5 + 0.5*mRand();
-                    printf("weight (%d,%d, %d) = %f\n", i,j,k, node->weights[k]);
+                    // printf("weight (%d,%d, %d) = %f\n", i,j,k, node->weights[k]);
                     total += node->weights[k];
                 }
                 node++;
@@ -555,13 +653,14 @@ void NNet::randWeights()
 
 void NNet::setInputs(std::vector<float> & in)
 {
-    auto iter = in.begin();   // look, auto is here really std::vector<float>::iterator
     if ( inLayer.numNodes == in.size() )
     {
+        auto iter = in.begin();   // look, auto is here really std::vector<float>::iterator
         for (auto & node : inLayer.nodes)
         {
             node.out = *(iter++);
         }
+
         // for (int i = 0; i < inLayer.numNodes; i++)  // this is what silly me used to do -_-
         // {
         //     inLayer.nodes[i].out = in[i];
@@ -608,6 +707,8 @@ void NNet::printWeights()
 
 void NNet::print()
 {
+    if (silent)
+        return;
     // Print Network status
     printf("Iterations : %d \n", iterations);
     printf("Current avg error : %f \n", avgError);
@@ -662,6 +763,41 @@ void NNet::print()
 
         layer++;
     }
+
+    // output layer
+    layer = &(outLayer);
+    NNode * node = &(layer->nodes[0]);
+    for (int i = 0; i < layer->numNodes; i++)
+    {
+             // Print node name
+            printf("Node(%d) : ", i);
+            
+            // Print output
+            printf("o = %f | ", node->out);
+
+            // Print delta
+            printf("delta = %f | " , node->delta);
+
+            // Print weights
+           
+            printf("w = ");
+            for (int w = 0; w < node->numWeights; w++)
+            {
+                printf("%f , ", node->weights[w]);
+            }
+            printf(" | ");
+
+            // Print Delta weights
+            printf("Dw = ");
+            for (int w = 0; w < node->numWeights; w++)
+            {
+                printf("%f , ", node->deltaWeights[w]);
+            }
+
+            printf("\n");   
+        node++;
+    }
+    printf("\n");
 }
 
 void NNet::printDeltas()
@@ -690,6 +826,11 @@ void NNet::printDeltas()
     }
 }
 
+void NNet::setSilent(bool b)
+{
+    silent = b;
+}
+
 void NNet::printOutputs()
 {
     NNode* node = &(outLayer.nodes[0]);
@@ -716,14 +857,27 @@ void NNet::draw(mat4 proj, mat4 view, int mvp_loc)
 
 NNode NNet::getNode(int L, int N )
 {
-    return hiddenLayers[L-1].nodes[N];
+    if (L == 0)
+    {
+        return inLayer.nodes[N];
+    }
+    else if (L == numLayers-1)
+    {
+        return outLayer.nodes[N];
+    }
+    else
+    {
+        return hiddenLayers[L].nodes[N];
+    }
 }
 // =================================================================================================================================================================================================================================
 
-std::vector<unsigned int> data = {2,5,5,3,2, 1};
+std::vector<unsigned int> data = {7,7,5,3,5,7,7};
 NNet testNet = NNet(data);
 
 int main() {
+
+    testNet.setSilent(true);  // makes NNet::print() silent 
 
 
     for (int i = 0; i < 500; i++)
@@ -731,16 +885,27 @@ int main() {
         mRand();
     }
 
-    std::vector<float> input = {1.0,1.0};
+    std::vector<float> input = {1.0,1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
     std::vector<float> target = {0.0};
+
 
     testNet.setInputs(input);
     testNet.randWeights();
     testNet.setRho(0.5);
-
     // testNet.forwardPropagate();
-    // testNet.backProp(target);
-    // testNet.randOuts();
+    testNet.forwardPropagate();
+
+    testNet.print();
+    printf("\n");
+    int L = 6, N = 0;
+    printf("node(%d,%d) = %f \n", L, N, testNet.getNode(L,N).out);
+
+
+    //Test new implementation
+    testNet.test();
+
+
+
 
     initGLFWandGLEW();
     initGL();
@@ -771,7 +936,7 @@ void Draw() {
     mat4 Projection = projection(fov, resx/float(resy), 0.1, 1000.0);
     mat4 Model = translate(vec3(0.0, 0.0, 0.0));
     mat4 MVP = Projection*View*Model;
-    // same RNG seed every frame
+    // same RNG seed every framex
     // "minimal standard" LCG RNG
     unsigned int IBM = 123;
     for (int i = 0; i < 100; i++) IBM *= 16807;
@@ -805,16 +970,20 @@ void Draw() {
     {  
         // toggleNetUpdate = 0;
 
-        float x = int(1.0 + mRand());
-        float y = int(1.0 + mRand());
-        float out = int(x) && int(y);
+        // float x = int(1.0 + mRand());
+        // float y = int(1.0 + mRand());
+        // float out = int(x) && int(y);
         // printf("(%f, %f) --> %f\n", x,y,out);
-        std::vector<float> vecIn = {x, y};
-        std::vector<float> target = {out};
+        // std::vector<float> vecIn = {x, y};
+        // std::vector<float> target = {out};
 
-        testNet.setInputs(vecIn);
+        std::vector<float> input = {1.0,1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+        // testNet.setInputs(vecIn);
+        // testNet.backProp(target);
+        testNet.setInputs(input);
         testNet.forwardPropagate();
-        testNet.backProp(target);
+        
+        testNet.backProp(input);
         testNet.updateWeights();
         testNet.print();
 
@@ -847,6 +1016,8 @@ void cleanGL() {
     glDeleteProgram(programID);
     glDeleteProgram(programID2);
 }
+
+
 
 void initGLFWandGLEW() {
     printf("Initializing OpenGL/GLFW\n"); 
