@@ -93,56 +93,8 @@ static const GLfloat quadUV[] =
      1.0f,  1.0f, 
 };
 
-float mRand()
-{
-    static unsigned int IBM = 123;
-    IBM *= 16807;
-    return float(IBM)/MAX_INT - 1.0;
-}
-
-void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
-{
-    int layerIndex = 1;
-    for (auto layer = net->getInputLayerIt(); layer != net->getLayerEndIt(); layer++)
-    {
-        // layer.draw(layerID, numLayers, proj, view, mvp_loc);
-
-        int loc = glGetUniformLocation(programID, "nodeFill");
-        int nodeIndex = 0;
-
-        glDisable(GL_DEPTH_TEST);
-       
-        unsigned int numLayers = net->getNumLayers();
-        unsigned int numNodes = layer->numNodes;
-
-        for (NNode node : layer->nodes)
-        {
-            vec3 nodePos = vec3(2.5 + 5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
-            // Draw node
-            // drawElement(float value, vec3 transl);
-            glUniform1f(loc, node.out);
-            mat4 model = translate( nodePos ); 
-            mat4 MVP = proj*view*model;
-            glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-            // Draw weights
-            for (int i = 0; i < node.numWeights; i++)
-            {
-                vec3 weightPos = 2.0*nodePos + vec3(-2.0, 1.0 + 2.0*(i - 0.5*node.numWeights), -50.0);
-                
-                glUniform1f(loc, node.weights[i]);
-                model = translate( weightPos ); 
-                MVP = proj*view*model;
-                glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
-                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-            }
-
-            nodeIndex++;
-        }
-        layerIndex++;
-    }
-}
+float mRand();
+void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc);
 
 std::vector<unsigned int> data = {2,2,1};
 NNet testNet = NNet(data);
@@ -164,9 +116,6 @@ int main() {
 
     testNet.print();
 
-
-    //Test new implementation
-    // testNet.test();
 
     while ( !glfwWindowShouldClose(window)) {   
         Draw();
@@ -546,4 +495,56 @@ GLuint LoadShaders(const char * vertex_file_path,const char * fragment_file_path
     glDeleteShader(FragmentShaderID);
 
     return ProgramID;
+}
+
+
+float mRand()
+{
+    static unsigned int IBM = 123;
+    IBM *= 16807;
+    return float(IBM)/MAX_INT - 1.0;
+}
+
+void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
+{
+    int layerIndex = 1;
+    for (auto layer = net->getInputLayerIt(); layer != net->getLayerEndIt(); layer++)
+    {
+        // layer.draw(layerID, numLayers, proj, view, mvp_loc);
+
+        int loc = glGetUniformLocation(programID, "nodeFill");
+        int nodeIndex = 0;
+
+        glDisable(GL_DEPTH_TEST);
+       
+        unsigned int numLayers = net->getNumLayers();
+        unsigned int numNodes = layer->numNodes;
+
+        for (NNode node : layer->nodes)
+        {
+            vec3 nodePos = vec3(2.5 + 5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
+            // Draw node
+            // drawElement(float value, vec3 transl);
+            glUniform1f(loc, node.out);
+            mat4 model = translate( nodePos ); 
+            mat4 MVP = proj*view*model;
+            glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+            // Draw weights
+            for (int i = 0; i < node.numWeights; i++)
+            {
+                vec3 weightPos = 2.0*nodePos + vec3(-2.0, 1.0 + 2.0*(i - 0.5*node.numWeights), -50.0);
+                
+                glUniform1f(loc, node.weights[i]);
+                model = translate( weightPos ); 
+                MVP = proj*view*model;
+                glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+
+            nodeIndex++;
+        }
+        layerIndex++;
+    }
 }
