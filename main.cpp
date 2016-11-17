@@ -50,17 +50,9 @@ GLuint VertexArrayID;
 GLuint quadVertexbuffer;
 GLuint quadUVbuffer;
 
+GLuint lineGraphVertexBuffer;
+
 bool toggleNetUpdate = 1;
-
-// Texture parameters
-
-#define NUM_TEXTURES 2
-GLuint *textures = new GLuint[NUM_TEXTURES];
-
-int textureX = 20, textureY = 20;
-#define TEX_SIZE 1200
-unsigned char data1[TEX_SIZE];
-unsigned char data2[TEX_SIZE];
 
 // Function forward declarations
 
@@ -80,7 +72,7 @@ void windowsize_callback(GLFWwindow*, int, int);
 static const GLfloat quadVertices[] =
 {
     -1.0f, -1.0f, 0.0f,
-     1.0f, -1.0f, 0.0f,
+     1.0f, -1.0f, 0.0f, 
     -1.0f,  1.0f, 0.0f,
      1.0f,  1.0f, 0.0f,
 };
@@ -93,14 +85,20 @@ static const GLfloat quadUV[] =
      1.0f,  1.0f, 
 };
 
+#define LIN_GRAPH_SIZE 1000
+
+GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
+
 float mRand();
 void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc);
+void initLineGraphData(int size);
 
-std::vector<unsigned int> data = {2,2,1};
+std::vector<unsigned int> data = {2,3,1};
 NNet testNet = NNet(data);
 
 int main() {
 
+    initLineGraphData(LIN_GRAPH_SIZE);
     initGLFWandGLEW();
     initGL();
 
@@ -136,41 +134,14 @@ void Draw() {
     glBindVertexArray(VertexArrayID);
 
     // get location of the modelview matrix in the shaders
-    int MVP_loc = glGetUniformLocation(programID, "MVP");      
+    int mvp_loc_1 = glGetUniformLocation(programID, "MVP");      
 
     // Create view and projection matrix, same for every cube drawn
     mat4 View = view(r, u, f, pos);
     mat4 Projection = projection(fov, resx/float(resy), 0.1, 1000.0);
+
     mat4 Model = translate(vec3(0.0, 0.0, 0.0));
     mat4 MVP = Projection*View*Model;
-    // same RNG seed every framex
-    // "minimal standard" LCG RNG
-    unsigned int IBM = 123;
-    for (int i = 0; i < 100; i++) IBM *= 16807;
-
-    // setup texture
-   
-    // no mipmaps, no interpolations
- 
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-   
-    // Get ready to draw objects
-
-    glUseProgram(programID);
-
-    // Draw Third object
-
-    glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
-    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
-    // glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
-    glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,0,(void*)0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, quadUVbuffer);
-    glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,0,(void*)0);
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
-
 
     // Update network
     if (toggleNetUpdate)
@@ -187,51 +158,28 @@ void Draw() {
         testNet.setInputs(vecIn);
         testNet.forwardPropagate();
         testNet.backProp(target);
-        printf("target = ");
-        for (auto t : target)
-        {
-            printf("%f, ");
-        }
-        printf("\n");
 
         testNet.print();
         testNet.updateWeights();
 
     }
 
-
-    // Draw network
-    // drawNetwork(testNet); TODO mofo
-
-
-
-    drawNNet(&testNet, Projection, View, MVP_loc);
-
-    // testNet.draw(Projection, View, MVP_loc);
-
-    glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
-    glDisableVertexAttribArray(2);
+    drawNNet(&testNet, Projection, View, mvp_loc_1);
 
     // Swap buffers
     glfwSwapBuffers(window);
 
 }
 
-
-
 void cleanGL() {
     glDeleteBuffers(1, &quadVertexbuffer);
     glDeleteBuffers(1, &quadUVbuffer);
-    glDeleteTextures(2, textures);
-
+    glDeleteBuffers(1, &lineGraphVertexBuffer);
 
     glDeleteVertexArrays(1, &VertexArrayID);
     glDeleteProgram(programID);
     glDeleteProgram(programID2);
 }
-
-
 
 void initGLFWandGLEW() {
     printf("Initializing OpenGL/GLFW\n"); 
@@ -277,8 +225,6 @@ void initGLFWandGLEW() {
 }
 
 void initGL() {
-    // Create and bind  VBO (Vertex Buffer Object). Vertex and element buffers are attached to this. 
-    // Can have multiple VBO's
     glGenVertexArrays(1, &VertexArrayID);
     glBindVertexArray( VertexArrayID);
 
@@ -294,49 +240,10 @@ void initGL() {
     glBindBuffer(GL_ARRAY_BUFFER, quadUVbuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadUV), quadUV, GL_STATIC_DRAW);   
 
-    // Create texture data1
-    int ctr = 0;
-    for (int j = 0; j < textureY; j++) {
-        for (int i = 0; i < textureX; i++) {
-            float x = i/float(textureX);
-            float y = j/float(textureY);
-            float arg = 255.0*( (i % 2 -0.5)*(j % 2 -0.5) > 0 ) ;
-            data1[ctr++] = arg;
-            data1[ctr++] = arg;
-            data1[ctr++] = arg;
-        }
-    }
-
-    // create texture data2
-     ctr = 0;
-    for (int j = 0; j < textureY; j++) {
-        for (int i = 0; i < textureX; i++) {
-            float x = i/float(textureX);
-            float y = j/float(textureY);
-            data2[ctr++] = 0*(0.5 + 0.5*sin(3*2*PI*x));
-            data2[ctr++] = 0*(0.5 + 0.5*cos(3*2*PI*y));
-            data2[ctr++] = 255*(0.5 + 0.5*sin(3*2*PI*x*y));
-        }
-    }
-
-    // Generate textures
-    glGenTextures(2, textures);
-
-    // Construct first texture
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, textureX, textureY, 0, GL_RGB, GL_UNSIGNED_BYTE, data1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);      
-
-    // Construct second texture
-    glBindTexture(GL_TEXTURE_2D, textures[1]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, textureX, textureY, 0, GL_RGB, GL_UNSIGNED_BYTE, data2);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);      
-
-    glActiveTexture(GL_TEXTURE0);
-    glUniform1i(glGetUniformLocation(programID, "myTextureSampler"), 0);
-
+    // Line graph buffer data
+    glGenBuffers(1, &lineGraphVertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, lineGraphVertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(lineGraphVertices), lineGraphVertices, GL_STATIC_DRAW);  // Might want to change to GL_DYNAMIC_DRAW?
 }
 
 void windowsize_callback(GLFWwindow * /*win*/, int width, int height) { 
@@ -370,17 +277,6 @@ void mousebutton_callback(GLFWwindow* win, int button, int action, int /*mods*/)
         clickedButtons &= ~(1 << button);
 
     if (clickedButtons&FIRST_BUTTON) {
-
-        // double xpos, ypos;
-        // glfwGetCursorPos(win , &xpos, &ypos);
-        // printf("mouse pos : (%f, %f) \n", xpos, ypos);
-        // printf("also updating deltas\n");
-        // std::vector<float> target = {-1.0};
-        // std::vector<float> input = {1.0,1.0};
-        // testNet.setInputs(input);
-        // testNet.forwardPropagate();
-        // testNet.backProp(target);
-        // testNet.updateWeights();
         
     } else if (clickedButtons&SECOND_BUTTON) {
         // printf("propagating forward \n");
@@ -415,7 +311,12 @@ void mousewheel_callback(GLFWwindow* win, double xoffset, double yoffset) {
     // called if the scroll wheel is moved
     // changing the "field of view", the 3D "equivalent" of zooming
     double zoomFactor = pow(0.95, yoffset);
-    fov = MAX(45, MIN(100.0, fov*zoomFactor));
+    fov = MAX(10, MIN(200.0, fov*zoomFactor));
+    printf("fov = %f\n", fov);
+
+    int zoom_loc = glGetUniformLocation(programID, "zoom");
+    glUniform1f(zoom_loc, fov);
+
 }
 
 
@@ -507,12 +408,24 @@ float mRand()
 
 void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
 {
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(2);
+
+    glUseProgram(programID);
+
+    glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, quadUVbuffer);
+    glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,0,(void*)0);
+
+    int loc       = glGetUniformLocation(programID, "nodeFill");
+    int scale_loc = glGetUniformLocation(programID, "scale");
+
     int layerIndex = 1;
+
     for (auto layer = net->getInputLayerIt(); layer != net->getLayerEndIt(); layer++)
     {
-        // layer.draw(layerID, numLayers, proj, view, mvp_loc);
-
-        int loc = glGetUniformLocation(programID, "nodeFill");
         int nodeIndex = 0;
 
         glDisable(GL_DEPTH_TEST);
@@ -522,29 +435,40 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
 
         for (NNode node : layer->nodes)
         {
-            vec3 nodePos = vec3(2.5 + 5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
-            // Draw node
-            // drawElement(float value, vec3 transl);
+            vec3 nodePos = vec3(5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
+            glUniform1f(scale_loc, 1.0);
             glUniform1f(loc, node.out);
             mat4 model = translate( nodePos ); 
             mat4 MVP = proj*view*model;
             glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-            // Draw weights
             for (int i = 0; i < node.numWeights; i++)
             {
-                vec3 weightPos = 2.0*nodePos + vec3(-2.0, 1.0 + 2.0*(i - 0.5*node.numWeights), -50.0);
-                
+                vec3 weightPos = nodePos + vec3(-1.5, 0.5 + (i - 0.25*node.numWeights), 0.0);
+                glUniform1f(scale_loc, 4.0);
                 glUniform1f(loc, node.weights[i]);
                 model = translate( weightPos ); 
                 MVP = proj*view*model;
                 glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
-
             nodeIndex++;
         }
         layerIndex++;
     }
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+}
+
+void initLineGraphData(int size)
+{
+    for (int i = 0; i < size; i++)
+    {
+        lineGraphVertices[2*i + 0] = i/500.0;
+        lineGraphVertices[2*i + 1] = 0.0;
+        lineGraphVertices[2*i + 2] = 0.0;
+    }
+    
 }
