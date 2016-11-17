@@ -90,10 +90,13 @@ static const GLfloat quadUV[] =
 GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
 
 float mRand();
-void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc);
+void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program);
 void initLineGraphData(int size);
 
-std::vector<unsigned int> data = {2,3,4,4,1};
+void drawLineGraph(mat4 proj, mat4 view, int GLSL_program);
+
+
+std::vector<unsigned int> data = {2,2,1};
 NNet testNet = NNet(data);
 
 int main() {
@@ -102,7 +105,7 @@ int main() {
     initGLFWandGLEW();
     initGL();
 
-    testNet.setSilent(false);  // makes NNet::print() silent 
+    testNet.setSilent(true);  // makes NNet::print() silent 
 
     for (int i = 0; i < 1500; i++)
     {
@@ -130,11 +133,11 @@ int main() {
 void Draw() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Tell OpenGL which program to use (can switch between multiple)
     glBindVertexArray(VertexArrayID);
 
     // get location of the modelview matrix in the shaders
     int mvp_loc_1 = glGetUniformLocation(programID, "MVP");      
+    int mvp_loc_2 = glGetUniformLocation(programID2, "MVP");      
 
     // Create view and projection matrix, same for every cube drawn
     mat4 View = view(r, u, f, pos);
@@ -163,8 +166,11 @@ void Draw() {
         testNet.updateWeights();
 
     }
+    drawLineGraph(Projection, View, programID2);
 
-    drawNNet(&testNet, Projection, View, mvp_loc_1);
+    drawNNet(&testNet, Projection, View, mvp_loc_1, programID);
+
+    // drawLineGraph(Projection, View, mvp_loc_2, programID2);
 
     // Swap buffers
     glfwSwapBuffers(window);
@@ -406,17 +412,17 @@ float mRand()
     return float(IBM)/MAX_INT - 1.0;
 }
 
-void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
+void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program)
 {
     glEnableVertexAttribArray(0);
 
-    glUseProgram(programID);
+    glUseProgram(GLSL_program);
 
     glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
 
-    int loc       = glGetUniformLocation(programID, "nodeFill");
-    int scale_loc = glGetUniformLocation(programID, "scale");
+    int loc       = glGetUniformLocation(GLSL_program, "nodeFill");
+    int scale_loc = glGetUniformLocation(GLSL_program, "scale");
 
     int layerIndex = 1;
 
@@ -457,12 +463,64 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
     glDisableVertexAttribArray(0);
 }
 
-void initLineGraphData(int size)
+int start_loc = 0;
+void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
+{ 
+    glUseProgram(GLSL_program);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, lineGraphVertexBuffer);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
+
+    mat4 model, MVP;
+
+    int mvp_loc = glGetUniformLocation(GLSL_program, "MVP");
+    int scale_loc = glGetUniformLocation(GLSL_program, "scale");
+
+    // draw first segment
+    vec3 posSignalSource = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0) + (1.0/30.0)*LIN_GRAPH_SIZE*vec3(1.0, 0.0, 0.0);
+    model = translate(posSignalSource);
+    MVP = proj*view*model;
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+    glUniform1f(scale_loc, 1.0);
+    glDrawArrays(GL_LINE_STRIP, 0, start_loc);
+
+
+    // draw second segment
+    vec3 posTail = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0);  // the factor of 1/30 stems from the initial size of the data window, look at the initLineGraph()
+    model = translate(posTail); 
+    MVP = proj*view*model;
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+    glUniform1f(scale_loc, 1.0);
+    glDrawArrays(GL_LINE_STRIP, start_loc, LIN_GRAPH_SIZE - start_loc);
+
+
+    // overwriting old data with new data point
+    GLfloat newPointData[3];
+    newPointData[0] = (start_loc - 500.0)/30.0;
+    newPointData[1] = 100.0*testNet.getAvgError(); //mRand();
+    newPointData[2] = 0.0;
+    glBufferSubData(GL_ARRAY_BUFFER, start_loc*sizeof(newPointData), sizeof(newPointData), newPointData);
+
+
+    glDisableVertexAttribArray(0);
+
+    start_loc ++;
+    start_loc = (start_loc < LIN_GRAPH_SIZE) ? start_loc : 0;
+}
+
+void updateGraph()
+{
+
+}
+
+void initLineGraphData(int size) 
 {
     for (int i = 0; i < size; i++)
     {
-        lineGraphVertices[2*i + 0] = i/500.0;
-        lineGraphVertices[2*i + 1] = 0.0;
-        lineGraphVertices[2*i + 2] = 0.0;
+        lineGraphVertices[3*i + 0] = (i - 500.0)/30.0;
+        lineGraphVertices[3*i + 1] = 0.0;
+        lineGraphVertices[3*i + 2] = 0.0;
     }
-}
+} 
