@@ -93,7 +93,7 @@ float mRand();
 void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc);
 void initLineGraphData(int size);
 
-std::vector<unsigned int> data = {2,3,1};
+std::vector<unsigned int> data = {2,3,4,4,1};
 NNet testNet = NNet(data);
 
 int main() {
@@ -409,15 +409,11 @@ float mRand()
 void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
 {
     glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(2);
 
     glUseProgram(programID);
 
     glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, quadUVbuffer);
-    glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,0,(void*)0);
 
     int loc       = glGetUniformLocation(programID, "nodeFill");
     int scale_loc = glGetUniformLocation(programID, "scale");
@@ -445,7 +441,7 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
 
             for (int i = 0; i < node.numWeights; i++)
             {
-                vec3 weightPos = nodePos + vec3(-1.5, 0.5 + (i - 0.25*node.numWeights), 0.0);
+                vec3 weightPos = nodePos + vec3(-1.5, 0.5 + (i - 0.5*node.numWeights), 0.0);
                 glUniform1f(scale_loc, 4.0);
                 glUniform1f(loc, node.weights[i]);
                 model = translate( weightPos ); 
@@ -457,9 +453,8 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc)
         }
         layerIndex++;
     }
+
     glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
-    glDisableVertexAttribArray(2);
 }
 
 void initLineGraphData(int size)
@@ -470,5 +465,4 @@ void initLineGraphData(int size)
         lineGraphVertices[2*i + 1] = 0.0;
         lineGraphVertices[2*i + 2] = 0.0;
     }
-    
 }
