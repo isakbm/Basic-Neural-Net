@@ -4,14 +4,22 @@
 #include <vector>
 #include <queue>
 
+#include "mathGL.h"
 #include "NNet.h"
 
 NNode::NNode(unsigned int num)
 {
+    isSelected = false;
     numWeights = num;
     weights.assign(numWeights, 1.0); 
     deltaWeights.assign(numWeights, 0.0); 
     delta = 0.0;
+}
+
+NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
+{
+    numNodes = num;
+    nodes.assign(numNodes, NNode(weightsPerNode));
 }
 
 NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
@@ -34,6 +42,19 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
     firstHiddenLayer = layers.begin() + 1;
     lastHiddenLayer  = layers.end() - 2;
     outputLayer      = layers.end() - 1;
+
+    int layerIndex = 1;
+    for (auto layer : layers)
+    {
+        int nodeIndex = 0;
+        for (auto &node : layer.nodes)
+        {
+            node.pos = vec2(5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*layer.numNodes));
+            nodeIndex++;        
+        }
+        layerIndex++;
+    }
+
 }
 
 unsigned int NNet::getNumLayers() const 
@@ -74,6 +95,24 @@ void NNet::updateWeights()
         }
     }
 }
+
+void NNet::setSelectedNode(int L, int N)
+{
+    if (L < 0 || L >= numLayers)
+    {
+        printf("The layer selection (L = %d) is out of range\n", L);
+        return;
+    }
+    else if (N < 0 || N >= layers[L].numNodes)
+    {
+        printf("The node selection (L,N) = (%d, %d) is out of range\n", L, N);
+        return;
+    }
+    
+    layers[L].nodes[N].isSelected = true;
+
+}
+
 
 void NNet::backProp(std::vector<float> target)
 {
@@ -149,13 +188,6 @@ void NNet::backProp(std::vector<float> target)
         avgError = sumError/float(errorWindow.size());
     }
 }
-
-NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
-{
-    numNodes = num;
-    nodes.assign(numNodes, NNode(weightsPerNode));
-}
-
 void NNet::test()
 {
     int layerID = 0, nodeID = 0;
@@ -278,6 +310,7 @@ void NNet::print()
         for (auto & node : layer->nodes)
         {
 
+            printf("selected : %d \n", node.isSelected);
             printf("Node %d : " , nodeID);
             printf("\t w  = ");
             for (auto & weight : node.weights)
@@ -303,4 +336,10 @@ void NNet::print()
 void NNet::setSilent(bool b)
 {
     silent = b;
+}
+
+
+float NNet::getAvgError()
+{
+    return avgError;
 }
