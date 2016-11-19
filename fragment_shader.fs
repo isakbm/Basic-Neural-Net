@@ -2,16 +2,17 @@
 
 // interpolated from the vertex shader values. 
 in vec3 pos;
-in vec3 normal;
-in vec2 uv;
+// in vec3 normal;
+// in vec2 uv;
 
-uniform sampler2D myTextureSampler;
+// uniform sampler2D myTextureSampler;
 uniform float nodeFill;
 
 out layout(location = 0) vec3 color; 
 
-uniform float scale;  // scale of drawn object
-uniform float zoom;   // camera zoom (used to compete with aliasing)
+uniform float scale;    // scale of drawn object
+uniform float zoom;     // camera zoom (used to compete with aliasing)
+uniform bool isSelected; // is the object selected
 
 void main() {
 
@@ -28,11 +29,9 @@ void main() {
 	float pref = abs(nodeFill)*(1.0 - r)  ;
 	pref = (pref > 0.0 ) ? pref : 0.0;
 
+ 	// shade of a ring around object
 	float zoomComp = (zoom != 0.0) ? 45.0/float(zoom) : 1.0;
-
-	// zoomComp = 1.0/10.0;
-
-	float shade;
+	float shade; 
 	if (scale == 1.0)
 	{
 		shade = (0.7  - zoomComp*40.0*(r - 0.85)*(r - 0.85));
@@ -43,16 +42,20 @@ void main() {
 	}
 	shade = (shade > 0.0) ? shade : 0; 
 		
-	
-	if (nodeFill < 0.0) 
+	// color of the object
+	vec3 normalColor, selectedColor; 
+	if (nodeFill < 0.0)  
 	{
-		color = shade*vec3(1.0,1.0,1.0) + pref*vec3(0.3,0.3,1.0) + (1.0 - pref)*bgColor;
+		normalColor   = shade*vec3(1.0,1.0,1.0) + pref*vec3(0.3,0.3,1.0) + (1.0 - pref)*bgColor;
+		selectedColor = shade*vec3(1.0,1.0,0.0) + pref*vec3(0.3,0.3,1.0) + (1.0 - pref)*bgColor;
+		color = (isSelected) ? selectedColor : normalColor;
 	}
 	else
 	{
-		color = shade*vec3(1.0,1.0,1.0) + pref*vec3(1.0,0.3,0.3) + (1.0 - pref)*bgColor;
+		normalColor   = shade*vec3(1.0,1.0,1.0) + pref*vec3(1.0,0.3,0.3) + (1.0 - pref)*bgColor;
+		selectedColor = shade*vec3(1.0,1.0,0.0) + pref*vec3(1.0,0.3,0.3) + (1.0 - pref)*bgColor;
+		color = (isSelected) ? selectedColor : normalColor;
 	}
-
 
 }
  
