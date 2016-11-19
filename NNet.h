@@ -7,8 +7,11 @@ struct NNode
     float delta;  // for error propagation
     float z;      // for storing the argument of the activation function
     float out;    // the output of the node
-    
-    NNode() : numWeights(0) {};
+
+    vec2 pos;
+    bool isSelected; 
+
+    NNode() : numWeights(0) , isSelected(false) {};
     NNode(unsigned int nW);
 };
 
@@ -39,7 +42,7 @@ class NNet
         float avgError; 
         float sumError;
         std::queue<float> errorWindow;
-        bool silent = false;        // "should we shut up (aka not print state of network) ? "
+        bool silent = true;        // "should we shut up (aka not print state of network) ? "
         
     public:
         
@@ -57,7 +60,12 @@ class NNet
         void print();
         void test();
         void setSilent(bool b);
+        void setSelectedNode(int L, int N);
+
         void resetIterations();
+
+
+        float getAvgError();
 
         unsigned int getNumLayers() const ;
 
