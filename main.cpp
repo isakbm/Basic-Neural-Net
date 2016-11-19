@@ -7,11 +7,11 @@
 // Custom vector and matrix classes and operator overloading.
 // Contains only what I deemed necessary at the time
 // Could probably use GLM instead
-#include "mathGL.h"
 
 #include <GL/glew.h>    // extension loading
 #include <GLFW/glfw3.h> // window and input
 
+#include "mathGL.h"
 #include "NNet.h"
 
 
@@ -22,7 +22,7 @@ GLFWwindow* window;
 double resx = 1600,resy = 900;
 
 int clickedButtons = 0;
-enum buttonMaps { FIRST_BUTTON=1, SECOND_BUTTON=2, THIRD_BUTTON=4, FOURTH_BUTTON=8, FIFTH_BUTTON=16, NO_BUTTON=0 };
+enum buttonMaps   { FIRST_BUTTON=1, SECOND_BUTTON=2, THIRD_BUTTON=4, FOURTH_BUTTON=8, FIFTH_BUTTON=16, NO_BUTTON=0 };
 enum modifierMaps { CTRL=2, SHIFT=1, ALT=4, META=8, NO_MODIFIER=0 };
 
 
@@ -48,7 +48,6 @@ GLuint programID2;
 GLuint VertexArrayID;
 
 GLuint quadVertexbuffer;
-GLuint quadUVbuffer;
 
 GLuint lineGraphVertexBuffer;
 
@@ -77,14 +76,6 @@ static const GLfloat quadVertices[] =
      1.0f,  1.0f, 0.0f,
 };
 
-static const GLfloat quadUV[] =
-{
-     0.0f,  0.0f,
-     1.0f,  0.0f, 
-     0.0f,  1.0f,
-     1.0f,  1.0f, 
-};
-
 #define LIN_GRAPH_SIZE 1000
 
 GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
@@ -96,7 +87,7 @@ void initLineGraphData(int size);
 void drawLineGraph(mat4 proj, mat4 view, int GLSL_program);
 
 
-std::vector<unsigned int> data = {2,2,1};
+std::vector<unsigned int> data = {2, 3, 4, 5, 6, 5, 4, 1};
 NNet testNet = NNet(data);
 
 int main() {
@@ -116,6 +107,7 @@ int main() {
     testNet.setRho(0.5);
 
     testNet.print();
+    testNet.setSelectedNode(0,0);
 
 
     while ( !glfwWindowShouldClose(window)) {   
@@ -129,15 +121,21 @@ int main() {
 
     return 0;
 }
-
+ 
 void Draw() {
+
+    // double xpos, ypos;
+    // glfwGetCursorPos(window, &xpos, &ypos);
+    // printf("cursor pos : (%f, %f) \n", xpos, ypos);
+
+
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glBindVertexArray(VertexArrayID);
 
     // get location of the modelview matrix in the shaders
     int mvp_loc_1 = glGetUniformLocation(programID, "MVP");      
-    int mvp_loc_2 = glGetUniformLocation(programID2, "MVP");      
+    int mvp_loc_2 = glGetUniformLocation(programID2, "MVP");        
 
     // Create view and projection matrix, same for every cube drawn
     mat4 View = view(r, u, f, pos);
@@ -154,7 +152,9 @@ void Draw() {
         float x = int(1.0 + mRand());
         float y = int(1.0 + mRand());
         float out = int(x) && int(y);
-        // printf("(%f, %f) --> %f\n", x,y,out);
+        
+
+
         std::vector<float> vecIn = {x, y};
         std::vector<float> target = {out};
 
@@ -179,7 +179,6 @@ void Draw() {
 
 void cleanGL() {
     glDeleteBuffers(1, &quadVertexbuffer);
-    glDeleteBuffers(1, &quadUVbuffer);
     glDeleteBuffers(1, &lineGraphVertexBuffer);
 
     glDeleteVertexArrays(1, &VertexArrayID);
@@ -242,9 +241,6 @@ void initGL() {
     glGenBuffers(1, &quadVertexbuffer);
     glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
-    glGenBuffers(1, &quadUVbuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, quadUVbuffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadUV), quadUV, GL_STATIC_DRAW);   
 
     // Line graph buffer data
     glGenBuffers(1, &lineGraphVertexBuffer);
@@ -421,8 +417,9 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
     glBindBuffer(GL_ARRAY_BUFFER, quadVertexbuffer);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
 
-    int loc       = glGetUniformLocation(GLSL_program, "nodeFill");
-    int scale_loc = glGetUniformLocation(GLSL_program, "scale");
+    int nodeFill_loc   = glGetUniformLocation(GLSL_program, "nodeFill");
+    int scale_loc      = glGetUniformLocation(GLSL_program, "scale");
+    int isSelected_loc = glGetUniformLocation(GLSL_program, "isSelected");
 
     int layerIndex = 1;
 
@@ -433,13 +430,14 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
         glDisable(GL_DEPTH_TEST);
        
         unsigned int numLayers = net->getNumLayers();
-        unsigned int numNodes = layer->numNodes;
+        unsigned int numNodes  = layer->numNodes;
 
         for (NNode node : layer->nodes)
         {
             vec3 nodePos = vec3(5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
             glUniform1f(scale_loc, 1.0);
-            glUniform1f(loc, node.out);
+            glUniform1f(nodeFill_loc, node.out);
+            glUniform1i(isSelected_loc, node.isSelected);
             mat4 model = translate( nodePos ); 
             mat4 MVP = proj*view*model;
             glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
@@ -447,9 +445,11 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
 
             for (int i = 0; i < node.numWeights; i++)
             {
-                vec3 weightPos = nodePos + vec3(-1.5, 0.5 + (i - 0.5*node.numWeights), 0.0);
+                float y = 0.5*(0.5 + (i - 0.5*node.numWeights));
+                float x = -1.5 + 0.25*y*y;
+                vec3 weightPos = nodePos + vec3(x, y, 0.0);
                 glUniform1f(scale_loc, 4.0);
-                glUniform1f(loc, node.weights[i]);
+                glUniform1f(nodeFill_loc, node.weights[i]);
                 model = translate( weightPos ); 
                 MVP = proj*view*model;
                 glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
@@ -473,7 +473,8 @@ void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
     glBindBuffer(GL_ARRAY_BUFFER, lineGraphVertexBuffer);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
 
-    mat4 model, MVP;
+    mat4 model;
+    mat4 MVP;
 
     int mvp_loc = glGetUniformLocation(GLSL_program, "MVP");
     int scale_loc = glGetUniformLocation(GLSL_program, "scale");
