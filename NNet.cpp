@@ -29,33 +29,37 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
     numLayers = numNPL.size(); // set total number of layers
     rho = 0.01;  // set the default learning rate
 
+    // allocate and initialize layers 
     std::vector<unsigned int> numWPN;                           // num of weights per node
     numWPN.push_back(1);                                        // the input layer always has one weight per node
     numWPN.insert(end(numWPN), begin(numNPL), end(numNPL));     // the rest have num weights = num of nodes on previous layer
-
     for (int n = 0; n < numNPL.size(); n++)
     {
         layers.push_back(NLayer(numNPL[n], numWPN[n]));
     }
 
+    // set iterators
     inputLayer       = layers.begin();
     firstHiddenLayer = layers.begin() + 1;
     lastHiddenLayer  = layers.end() - 2;
     outputLayer      = layers.end() - 1;
 
-    int layerIndex = 1;
-    for (auto layer : layers)
+    // set positions
+    int layerIndex = 0;
+    for (auto &layer : layers)
     {
         int nodeIndex = 0;
         for (auto &node : layer.nodes)
         {
-            node.pos = vec2(5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*layer.numNodes));
+            node.pos = vec2(5.0*(layerIndex - 0.5*(numLayers-1)), 5.0*(nodeIndex - 0.5*(layer.numNodes-1)));
             nodeIndex++;        
         }
         layerIndex++;
     }
 
 }
+
+// 
 
 unsigned int NNet::getNumLayers() const 
 {
@@ -109,8 +113,8 @@ void NNet::setSelectedNode(int L, int N)
         return;
     }
     
-    layers[L].nodes[N].isSelected = true;
-
+    bool & state = layers[L].nodes[N].isSelected;
+    state = !state;
 }
 
 
