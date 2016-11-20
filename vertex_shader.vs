@@ -13,7 +13,7 @@ out vec3 pos;
 // out vec2 uv; 
 
 void main() {
-	gl_Position =  MVP *  vec4(vertexPosition, scale);
+	gl_Position =  MVP *  vec4(vertexPosition, 1.0/float(scale));
 	pos = vertexPosition;
 	// normal = vertexNormal;
 	// uv = vertexUVs;

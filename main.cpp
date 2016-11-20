@@ -77,19 +77,21 @@ static const GLfloat quadVertices[] =
      1.0f,  1.0f, 0.0f,
 };
 
+
+
 #define LIN_GRAPH_SIZE 1000
 
 GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
 
 float mRand();
-void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program);
+void NNetDraw(const NNet* net, mat4 proj, int mvp_loc, int GLSL_program);
 void initLineGraphData(int size);
 
 void NNetInteractionUpdate(NNet* net);
-void drawLineGraph(mat4 proj, mat4 view, int GLSL_program);
+void drawLineGraph(mat4 proj, int GLSL_program);
 
 
-std::vector<unsigned int> data = {2, 3, 5, 5, 1};
+std::vector<unsigned int> data = {2, 3, 5, 5,5,5,5, 1};
 NNet testNet = NNet(data);
 
 int main() {
@@ -103,11 +105,10 @@ int main() {
     initGLFWandGLEW();
     initGL();
 
-    testNet.setSilent(true);  // makes NNet::print() silent 
+    testNet.setSilent(false);  // makes NNet::print() silent 
     testNet.randWeights(mRand);
     testNet.setRho(0.5);
     testNet.print();
-    testNet.setSelectedNode(0,0);
 
 
 
@@ -138,12 +139,18 @@ void Draw() {
     int mvp_loc_1 = glGetUniformLocation(programID, "MVP");      
     int mvp_loc_2 = glGetUniformLocation(programID2, "MVP");        
 
-    // Create view and projection matrix, same for every cube drawn
-    mat4 View = view(r, u, f, pos);
-    mat4 Projection = projection(fov, resx/float(resy), 0.1, 1000.0);
+    mat4 Projection(1.0);
+    Projection.m22 = float(resx)/float(resy);
+    Projection.m44 = 0.5*double(resx);
 
-    mat4 Model = translate(vec3(0.0, 0.0, 0.0));
-    mat4 MVP = Projection*View*Model;
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            // printf("%f ", (Projection*View).M[i][j]);
+        }
+        // printf("\n");
+    }
 
     // Update network
     if (toggleNetUpdate)
@@ -163,15 +170,15 @@ void Draw() {
         testNet.forwardPropagate();
         testNet.backProp(target);
 
-        testNet.print();
+        // testNet.print();
         testNet.updateWeights();
 
     }
-    drawLineGraph(Projection, View, programID2);
+    drawLineGraph(Projection, programID2);
 
-    NNetDraw(&testNet, Projection, View, mvp_loc_1, programID);
+    NNetDraw(&testNet, Projection, mvp_loc_1, programID);
 
-    // drawLineGraph(Projection, View, mvp_loc_2, programID2);
+    // drawLineGraph(Projection, View, programID2);
 
     // Swap buffers
     glfwSwapBuffers(window);
@@ -264,11 +271,20 @@ void key_callback(GLFWwindow* win, int key, int /*scancode*/, int action, int /*
     if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
     { 
         toggleNetUpdate = !toggleNetUpdate;
-        
+        printf("pressed space\n");
     }
     if (key == GLFW_KEY_ESCAPE) {
         glfwSetWindowShouldClose(win, GL_TRUE);
     }
+    if (key == GLFW_KEY_DELETE  && action == GLFW_PRESS)
+    { 
+        printf("pressed DEL\n");
+        testNet.deleteSelectedNodes();
+        testNet.print();
+
+        
+    }
+
 }
 
 void mousebutton_callback(GLFWwindow* win, int button, int action, int /*mods*/) {
@@ -328,6 +344,7 @@ void mousewheel_callback(GLFWwindow* win, double xoffset, double yoffset) {
     printf("fov = %f\n", fov);
 
     int zoom_loc = glGetUniformLocation(programID, "zoom");
+
     glUniform1f(zoom_loc, fov);
 
 }
@@ -419,7 +436,7 @@ float mRand()
     return float(IBM)/MAX_INT - 1.0;
 }
 
-void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program)
+void NNetDraw(const NNet* net, mat4 Proj, int mvp_loc, int GLSL_program)
 {
     glEnableVertexAttribArray(0);
 
@@ -429,10 +446,14 @@ void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
 
     int nodeFill_loc   = glGetUniformLocation(GLSL_program, "nodeFill");
-    int scale_loc      = glGetUniformLocation(GLSL_program, "scale");
+    int frag_scale_loc = glGetUniformLocation(GLSL_program, "scale");
     int isSelected_loc = glGetUniformLocation(GLSL_program, "isSelected");
+    int object_loc     = glGetUniformLocation(GLSL_program, "object");
 
     int layerIndex = 1;
+
+    mat4 Scale = scale((45.0/fov)*vec3(1.0,1.0,0.0));
+    mat4 SP = Scale*Proj;
 
     for (auto layer = net->getInputLayerIt(); layer != net->getLayerEndIt(); layer++)
     {
@@ -446,24 +467,26 @@ void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
         for (NNode node : layer->nodes)
         {
             vec3 nodePos = vec3(node.pos.x, node.pos.y, 0.0);
-            glUniform1f(scale_loc, 1.0);
+            glUniform1i(object_loc, NNET_NODE);
+            glUniform1f(frag_scale_loc, 20.0);
             glUniform1f(nodeFill_loc, node.out);
             glUniform1i(isSelected_loc, node.isSelected);
-            mat4 model = translate( nodePos ); 
-            mat4 MVP = proj*view*model;
-            glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+            mat4 SPT = SP*translate( nodePos );
+            glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &SPT.M[0][0]); 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
             for (int i = 0; i < node.numWeights; i++)
             {
-                float y = 0.5*(0.5 + (i - 0.5*node.numWeights));
-                float x = -1.5 + 0.25*y*y;
+                glUniform1i(object_loc, NNET_WEIGHT);
+                float y = 12.0*(0.5 + (i - 0.5*node.numWeights));
+                float x = -30.0 + 0.016*y*y;
                 vec3 weightPos = nodePos + vec3(x, y, 0.0);
-                glUniform1f(scale_loc, 4.0);
+                glUniform1f(frag_scale_loc, 5.0);
                 glUniform1f(nodeFill_loc, node.weights[i]);
-                model = translate( weightPos ); 
-                MVP = proj*view*model;
-                glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+                SPT = SP*translate( weightPos );
+
+                glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &SPT.M[0][0]); 
+
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             }
             nodeIndex++;
@@ -479,8 +502,7 @@ void NNetInteractionUpdate(NNet* net)
     double cx, cy;
     glfwGetCursorPos(window, &cx, &cy);
     
-    double scale = 0.04512*(double(resy)/900.0)*tan(fov*PI/180.0/2.0)/tan(45.0*PI/180.0/2.0);
-
+    float scale = (fov/45.0);
     vec2 cursorPos ( + scale*(cx - 0.5*resx) , - scale*(cy - 0.5*resy) );
 
     float dist = 1E20;
@@ -498,7 +520,7 @@ void NNetInteractionUpdate(NNet* net)
             float tempDist = (cursorPos - node.pos).length();
             if (tempDist < dist)
             {
-                nearestLayerID = layerID;
+                nearestLayerID = layerID;   
                 nearestNodeID  = nodeID;
                 dist = tempDist;
             } 
@@ -506,7 +528,9 @@ void NNetInteractionUpdate(NNet* net)
         }
         layerID++;
     }
-    if ( dist < 0.85 && (clickedButtons & FIRST_BUTTON) && !(prevClickedButtons & FIRST_BUTTON) )
+    // printf("dist = %f\n", dist);
+
+    if ( dist < 19.0 && (clickedButtons & FIRST_BUTTON) && !(prevClickedButtons & FIRST_BUTTON) )
     {
         printf("Setting node (%d, %d)\n", nearestLayerID, nearestNodeID);
         net->setSelectedNode(nearestLayerID, nearestNodeID);
@@ -515,12 +539,9 @@ void NNetInteractionUpdate(NNet* net)
 }
 
 
-
-
-
-int start_loc = 0;
-void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
+void drawLineGraph(mat4 Proj, int GLSL_program)
 { 
+    static int start_loc = 0;
     glUseProgram(GLSL_program);
 
     glDisable(GL_DEPTH_TEST);
@@ -528,16 +549,20 @@ void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
     glBindBuffer(GL_ARRAY_BUFFER, lineGraphVertexBuffer);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
 
-    mat4 model;
+    // int frag_scale_loc = glGetUniformLocation(GLSL_program, "scale");
+    // glUniform1f(frag_scale_loc, 40.0);
+
+    mat4 Model;
     mat4 MVP;
+    mat4 Scale = scale((45.0/fov)*20.0*vec3(1.0, 1.0, 0.0));
 
     int mvp_loc = glGetUniformLocation(GLSL_program, "MVP");
     int scale_loc = glGetUniformLocation(GLSL_program, "scale");
 
     // draw first segment
     vec3 posSignalSource = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0) + (1.0/30.0)*LIN_GRAPH_SIZE*vec3(1.0, 0.0, 0.0);
-    model = translate(posSignalSource);
-    MVP = proj*view*model;
+    Model = translate(posSignalSource);
+    MVP = Scale*Proj*Model;
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
     glUniform1f(scale_loc, 1.0);
     glDrawArrays(GL_LINE_STRIP, 0, start_loc);
@@ -545,8 +570,8 @@ void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
 
     // draw second segment
     vec3 posTail = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0);  // the factor of 1/30 stems from the initial size of the data window, look at the initLineGraph()
-    model = translate(posTail); 
-    MVP = proj*view*model;
+    Model = translate(posTail); 
+    MVP =  Scale*Proj*Model;
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
     glUniform1f(scale_loc, 1.0);
     glDrawArrays(GL_LINE_STRIP, start_loc, LIN_GRAPH_SIZE - start_loc);

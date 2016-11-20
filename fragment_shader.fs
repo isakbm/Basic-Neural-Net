@@ -1,5 +1,8 @@
 #version 330 core
 
+#define NNET_NODE   0
+#define NNET_WEIGHT 1
+
 // interpolated from the vertex shader values. 
 in vec3 pos;
 // in vec3 normal;
@@ -8,11 +11,14 @@ in vec3 pos;
 // uniform sampler2D myTextureSampler;
 uniform float nodeFill;
 
+
+
 out layout(location = 0) vec3 color; 
 
-uniform float scale;    // scale of drawn object
 uniform float zoom;     // camera zoom (used to compete with aliasing)
 uniform bool isSelected; // is the object selected
+uniform int object;
+
 
 void main() {
 
@@ -32,14 +38,16 @@ void main() {
  	// shade of a ring around object
 	float zoomComp = (zoom != 0.0) ? 45.0/float(zoom) : 1.0;
 	float shade; 
-	if (scale == 1.0)
+	if (object == NNET_NODE)
 	{
 		shade = (0.7  - zoomComp*40.0*(r - 0.85)*(r - 0.85));
 	}
-	else
+	else if (object	== NNET_WEIGHT)
 	{
 		shade = (0.7  - zoomComp*10.0*(r - 0.75)*(r - 0.75));
 	}
+	else
+		shade = 0.0;
 	shade = (shade > 0.0) ? shade : 0; 
 		
 	// color of the object

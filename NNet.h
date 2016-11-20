@@ -1,3 +1,6 @@
+#define NNET_NODE 0
+#define NNET_WEIGHT 1
+
 struct NNode
 {
     int numWeights;
@@ -54,13 +57,17 @@ class NNet
         void setInputs(std::vector<float> & in);
         void randWeights(float (*rng)(void) );
         void backProp(std::vector<float> target);
-        void setRho(float rate);
         void updateWeights();
 
         void print();
         void test();
+        
+        void deleteSelectedNodes();
+
+        void setRho(float rate);
         void setSilent(bool b);
         void setSelectedNode(int L, int N);
+
 
         void resetIterations();
 

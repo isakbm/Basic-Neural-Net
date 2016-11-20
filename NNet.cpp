@@ -51,7 +51,7 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
         int nodeIndex = 0;
         for (auto &node : layer.nodes)
         {
-            node.pos = vec2(5.0*(layerIndex - 0.5*(numLayers-1)), 5.0*(nodeIndex - 0.5*(layer.numNodes-1)));
+            node.pos = vec2(125.0*(layerIndex - 0.5*(numLayers-1)), 125.0*(nodeIndex - 0.5*(layer.numNodes-1)));
             nodeIndex++;        
         }
         layerIndex++;
@@ -346,4 +346,67 @@ void NNet::setSilent(bool b)
 float NNet::getAvgError()
 {
     return avgError;
+}
+
+
+void NNet::deleteSelectedNodes()
+{
+    int layerID = 1;
+    for (auto layer = firstHiddenLayer; layer != outputLayer; layer++)
+    {
+        std::vector<int> selectedNodes;
+        int nodeID = 0;
+        for (auto & node : layer->nodes)
+        {
+            if (node.isSelected)
+            {
+                selectedNodes.push_back(nodeID);
+            }
+            nodeID++;
+        }
+
+        printf("In layer %d we are going to delete nodes: ", layerID);
+        for (int selNode : selectedNodes)
+        {
+            printf("%d, ", selNode);
+        }
+        printf("\n");
+
+        int eraseCounter = 0;
+        for (int selNodeID : selectedNodes)
+        {
+            if (layer->numNodes > 1)
+            {
+                // remove node from layer
+                printf("removing node %d from layer %d \n", selNodeID, layerID);
+                layer->nodes.erase(layer->nodes.begin() + selNodeID - eraseCounter);
+                layer->numNodes -= 1;
+                printf("success\n");
+
+                // remove associated weight from nodes in next layer
+                printf("removing weights in next layer for node :\n");
+                auto nextLayer = layer +1;
+                int nextNodeID = 0;
+                for (auto & nextNode : nextLayer->nodes)
+                {
+                    printf("removing weight %d in node %d \n", selNodeID, nextNodeID );
+                    auto weightIt = nextNode.weights.begin() + selNodeID - eraseCounter;
+                    nextNode.weights.erase(weightIt);
+                    auto deltaWeightIt = nextNode.deltaWeights.begin() + selNodeID - eraseCounter;
+                    nextNode.deltaWeights.erase(deltaWeightIt);
+                    nextNode.numWeights -= 1;
+                    printf("success\n");
+                    nextNodeID ++;
+                }
+            }
+            else
+            {
+            // remove layer and "connect" previous with next
+            // set numLayers -= 1
+            }
+            eraseCounter++;
+        }
+
+        layerID++;
+    }
 }
