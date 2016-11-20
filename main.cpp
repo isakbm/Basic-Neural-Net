@@ -22,6 +22,7 @@ GLFWwindow* window;
 double resx = 1600,resy = 900;
 
 int clickedButtons = 0;
+int prevClickedButtons = 0;
 enum buttonMaps   { FIRST_BUTTON=1, SECOND_BUTTON=2, THIRD_BUTTON=4, FOURTH_BUTTON=8, FIFTH_BUTTON=16, NO_BUTTON=0 };
 enum modifierMaps { CTRL=2, SHIFT=1, ALT=4, META=8, NO_MODIFIER=0 };
 
@@ -81,37 +82,41 @@ static const GLfloat quadVertices[] =
 GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
 
 float mRand();
-void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program);
+void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program);
 void initLineGraphData(int size);
 
+void NNetInteractionUpdate(NNet* net);
 void drawLineGraph(mat4 proj, mat4 view, int GLSL_program);
 
 
-std::vector<unsigned int> data = {2, 3, 4, 5, 6, 5, 4, 1};
+std::vector<unsigned int> data = {2, 3, 5, 5, 1};
 NNet testNet = NNet(data);
 
 int main() {
-
-    initLineGraphData(LIN_GRAPH_SIZE);
-    initGLFWandGLEW();
-    initGL();
-
-    testNet.setSilent(true);  // makes NNet::print() silent 
 
     for (int i = 0; i < 1500; i++)
     {
         mRand();
     }
 
+    initLineGraphData(LIN_GRAPH_SIZE);
+    initGLFWandGLEW();
+    initGL();
+
+    testNet.setSilent(true);  // makes NNet::print() silent 
     testNet.randWeights(mRand);
     testNet.setRho(0.5);
-
     testNet.print();
     testNet.setSelectedNode(0,0);
 
 
-    while ( !glfwWindowShouldClose(window)) {   
+
+    while ( !glfwWindowShouldClose(window) )
+    {   
+        NNetInteractionUpdate(&testNet);
         Draw();
+
+        prevClickedButtons = clickedButtons;
         glfwPollEvents();
     }
 
@@ -123,10 +128,6 @@ int main() {
 }
  
 void Draw() {
-
-    // double xpos, ypos;
-    // glfwGetCursorPos(window, &xpos, &ypos);
-    // printf("cursor pos : (%f, %f) \n", xpos, ypos);
 
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -168,7 +169,7 @@ void Draw() {
     }
     drawLineGraph(Projection, View, programID2);
 
-    drawNNet(&testNet, Projection, View, mvp_loc_1, programID);
+    NNetDraw(&testNet, Projection, View, mvp_loc_1, programID);
 
     // drawLineGraph(Projection, View, mvp_loc_2, programID2);
 
@@ -176,6 +177,7 @@ void Draw() {
     glfwSwapBuffers(window);
 
 }
+
 
 void cleanGL() {
     glDeleteBuffers(1, &quadVertexbuffer);
@@ -273,22 +275,31 @@ void mousebutton_callback(GLFWwindow* win, int button, int action, int /*mods*/)
     // called if a mouse button is pressed or released
     // glfwGetCursorPos(win,&prevx,&prevy);
 
-    if (action == 1)
+    if (action == GLFW_PRESS)
+    {
+        // printf("setting\n");
+        // prevClickedButtons = clickedButtons;
         clickedButtons |= (1 << button);
+    }
     else
-        clickedButtons &= ~(1 << button);
+    {
+                // printf("setting\n");
 
-    if (clickedButtons&FIRST_BUTTON) {
-        
-    } else if (clickedButtons&SECOND_BUTTON) {
+        // prevClickedButtons = clickedButtons;
+        clickedButtons &= ~(1 << button);
+    }
+
+    if (clickedButtons & FIRST_BUTTON) {
+
+    } else if (clickedButtons & SECOND_BUTTON) {
         // printf("propagating forward \n");
         // testNet.forwardPropagate();
 
-    } else if (clickedButtons&THIRD_BUTTON) {
+    } else if (clickedButtons & THIRD_BUTTON) {
 
-    } else if (clickedButtons&FOURTH_BUTTON) {
+    } else if (clickedButtons & FOURTH_BUTTON) {
 
-    } else if (clickedButtons&FIFTH_BUTTON) {
+    } else if (clickedButtons & FIFTH_BUTTON) {
 
     }
 }
@@ -298,13 +309,13 @@ void mousepos_callback(GLFWwindow* win, double xpos, double ypos) {
     if (clickedButtons&FIRST_BUTTON) {
         // printf("mouse pos : (%f, %f) \n", xpos, ypos);
 
-    } else if (clickedButtons&SECOND_BUTTON) {
+    } else if (clickedButtons & SECOND_BUTTON) {
 
-    } else if (clickedButtons&THIRD_BUTTON) {
+    } else if (clickedButtons & THIRD_BUTTON) {
 
-    } else if (clickedButtons&FOURTH_BUTTON) {
+    } else if (clickedButtons & FOURTH_BUTTON) {
 
-    } else if (clickedButtons&FIFTH_BUTTON) {
+    } else if (clickedButtons & FIFTH_BUTTON) {
 
     }
 }
@@ -408,7 +419,7 @@ float mRand()
     return float(IBM)/MAX_INT - 1.0;
 }
 
-void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program)
+void NNetDraw(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_program)
 {
     glEnableVertexAttribArray(0);
 
@@ -434,7 +445,7 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
 
         for (NNode node : layer->nodes)
         {
-            vec3 nodePos = vec3(5.0*(layerIndex - 0.5*numLayers), 2.5 + 5.0*(nodeIndex - 0.5*numNodes), 0.0);
+            vec3 nodePos = vec3(node.pos.x, node.pos.y, 0.0);
             glUniform1f(scale_loc, 1.0);
             glUniform1f(nodeFill_loc, node.out);
             glUniform1i(isSelected_loc, node.isSelected);
@@ -462,6 +473,50 @@ void drawNNet(const NNet* net, mat4 proj, mat4 view, int mvp_loc, int GLSL_progr
 
     glDisableVertexAttribArray(0);
 }
+
+void NNetInteractionUpdate(NNet* net)
+{
+    double cx, cy;
+    glfwGetCursorPos(window, &cx, &cy);
+    
+    double scale = 0.04512*(double(resy)/900.0)*tan(fov*PI/180.0/2.0)/tan(45.0*PI/180.0/2.0);
+
+    vec2 cursorPos ( + scale*(cx - 0.5*resx) , - scale*(cy - 0.5*resy) );
+
+    float dist = 1E20;
+
+    // printf("cursor pos = (%f, %f) \n", cursorPos.x, cursorPos.y);
+
+    int nearestLayerID;
+    int nearestNodeID;
+    int layerID = 0;
+    for (auto layer = net->getInputLayerIt(); layer != net->getLayerEndIt(); layer++)
+    {
+        int nodeID = 0;
+        for (NNode node : layer->nodes)
+        {
+            float tempDist = (cursorPos - node.pos).length();
+            if (tempDist < dist)
+            {
+                nearestLayerID = layerID;
+                nearestNodeID  = nodeID;
+                dist = tempDist;
+            } 
+            nodeID++;
+        }
+        layerID++;
+    }
+    if ( dist < 0.85 && (clickedButtons & FIRST_BUTTON) && !(prevClickedButtons & FIRST_BUTTON) )
+    {
+        printf("Setting node (%d, %d)\n", nearestLayerID, nearestNodeID);
+        net->setSelectedNode(nearestLayerID, nearestNodeID);
+    }
+
+}
+
+
+
+
 
 int start_loc = 0;
 void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
@@ -509,11 +564,6 @@ void drawLineGraph(mat4 proj, mat4 view, int GLSL_program)
 
     start_loc ++;
     start_loc = (start_loc < LIN_GRAPH_SIZE) ? start_loc : 0;
-}
-
-void updateGraph()
-{
-
 }
 
 void initLineGraphData(int size) 
