@@ -21,12 +21,24 @@ vec2 operator+(const vec2 &lhs, const vec2 &rhs) {
 vec2 operator+(const float &lhs, const vec2 &rhs) {
     return vec2(lhs + rhs.x, lhs + rhs.y);
 }
+vec2 operator-(const vec2 &lhs, const vec2 &rhs) {
+    return vec2(lhs.x - rhs.x, lhs.y - rhs.y);
+}
+vec2 operator-(const float &lhs, const vec2 &rhs) {
+    return vec2(lhs - rhs.x, lhs - rhs.y);
+}
 vec2 operator*(const vec2 &lhs, const float &rhs) {
     return vec2(lhs.x*rhs, lhs.y*rhs);
 }
 vec2 operator*(const float &lhs, const vec2 &rhs) {
     return vec2(lhs*rhs.x, lhs*rhs.y);
 }
+
+float vec2::length() const
+{
+    return sqrt(x*x + y*y);
+}
+
 
 
 vec3::vec3() : x(0.0f), y(0.0f), z(0.0f) {
