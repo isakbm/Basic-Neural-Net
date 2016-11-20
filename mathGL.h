@@ -16,10 +16,15 @@ struct vec2 {
 
     vec2();
     vec2(float x, float y);
+
+
+    float length() const;
 };
 
 vec2 operator+(const vec2  &, const vec2  &);
 vec2 operator+(const float &, const vec2  &);
+vec2 operator-(const vec2  &, const vec2  &);
+vec2 operator-(const float &, const vec2  &);
 vec2 operator*(const vec2  &, const float &);
 vec2 operator*(const float &, const vec2  &);
 
