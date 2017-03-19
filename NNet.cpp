@@ -7,9 +7,23 @@
 #include "mathGL.h"
 #include "NNet.h"
 
+/*
+    
+    The design :
+
+    NNet is built out of NLayer's that are in turn built out of NNode's.
+
+
+*/
+
+// -----------------------------------------------------------------
+// CONSTRUCTORS
+// -----------------------------------------------------------------
+
 NNode::NNode(unsigned int num)
 {
-    isSelected = false;
+    isSelected = false;   // For GUI
+
     numWeights = num;
     weights.assign(numWeights, 1.0); 
     deltaWeights.assign(numWeights, 0.0); 
@@ -24,12 +38,14 @@ NLayer::NLayer(unsigned int num, unsigned int weightsPerNode)
 
 NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
 {
-    sumError = 0.0;
-    iterations = 0;
-    numLayers = numNPL.size(); // set total number of layers
-    rho = 0.01;  // set the default learning rate
+    sumError = 0.0;             // Keeps track of error
+    iterations = 0;             // Counts iterations
+    numLayers = numNPL.size();  // Total number of layers - numNPL = "num of nodes per layer" it's size is equal to the number of layers
+    rho = 0.01;                 // The default learning rate
 
+    // -----------------------------------------------------------------
     // allocate and initialize layers 
+    // -----------------------------------------------------------------
     std::vector<unsigned int> numWPN;                           // num of weights per node
     numWPN.push_back(1);                                        // the input layer always has one weight per node
     numWPN.insert(end(numWPN), begin(numNPL), end(numNPL));     // the rest have num weights = num of nodes on previous layer
@@ -37,14 +53,16 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
     {
         layers.push_back(NLayer(numNPL[n], numWPN[n]));
     }
-
+    // -----------------------------------------------------------------
     // set iterators
+    // -----------------------------------------------------------------
     inputLayer       = layers.begin();
     firstHiddenLayer = layers.begin() + 1;
     lastHiddenLayer  = layers.end() - 2;
     outputLayer      = layers.end() - 1;
-
-    // set positions
+    // -----------------------------------------------------------------
+    // set positions - GUI
+    // ----------------------------------------------------------------- 
     int layerIndex = 0;
     for (auto &layer : layers)
     {
@@ -56,10 +74,13 @@ NNet::NNet(std::vector<unsigned int> & numNPL)    // NPL = nodes per layer
         }
         layerIndex++;
     }
+    // -----------------------------------------------------------------
 
 }
 
-// 
+// -----------------------------------------------------------------
+// METHODS
+// -----------------------------------------------------------------
 
 unsigned int NNet::getNumLayers() const 
 {
@@ -102,7 +123,7 @@ void NNet::updateWeights()
 
 void NNet::setSelectedNode(int L, int N)
 {
-    if (L < 0 || L >= numLayers)
+    if ( L < 0 || L >= numLayers )
     {
         printf("The layer selection (L = %d) is out of range\n", L);
         return;
@@ -117,7 +138,12 @@ void NNet::setSelectedNode(int L, int N)
     state = !state;
 }
 
+/*
 
+    Implementation of standard back propagation of error.!
+
+
+*/ 
 void NNet::backProp(std::vector<float> target)
 {
     if (target.size() != outputLayer->numNodes)
@@ -131,8 +157,9 @@ void NNet::backProp(std::vector<float> target)
             sumError = 0.0; // reset sumError
         }
         iterations++;
-
+        // -----------------------------------------------------------------
         // computation for the output layer
+        // -----------------------------------------------------------------
         auto outNode = outputLayer->nodes.begin();
         for (float t : target)
         {   
@@ -148,8 +175,9 @@ void NNet::backProp(std::vector<float> target)
             }
             outNode++;
         }
-
+        // -----------------------------------------------------------------
         // computation for the hidden layers
+        // -----------------------------------------------------------------
         for (auto layer = lastHiddenLayer; layer != inputLayer; layer--)   // note that this loop goes "backwards" that is important
         {
             auto prevLayer = layer -1;
@@ -174,9 +202,12 @@ void NNet::backProp(std::vector<float> target)
                 }
             }
         }
+        // -----------------------------------------------------------------
     }
 
+    // -----------------------------------------------------------------
     // Average error in an error window of size 100 is tracked
+    // -----------------------------------------------------------------
     float error = 0.0;
     for (int t = 0; t < target.size(); t++)
     {
@@ -191,7 +222,11 @@ void NNet::backProp(std::vector<float> target)
         errorWindow.pop();
         avgError = sumError/float(errorWindow.size());
     }
+    // -----------------------------------------------------------------
+
+
 }
+
 void NNet::test()
 {
     int layerID = 0, nodeID = 0;
@@ -227,7 +262,7 @@ void NNet::test()
     }
 }
 
-void NNet::forwardPropagate()
+void NNet::forwardPropagate() const
 {
     for (auto layer = firstHiddenLayer; layer != layers.end(); ++layer)
     {
@@ -261,7 +296,7 @@ void NNet::randWeights(float (*rng)(void) )
     }
 }
 
-void NNet::setInputs(std::vector<float> & in)
+void NNet::setInputs(std::vector<float> & in) const
 {
     if ( inputLayer->numNodes == in.size() )
     {
@@ -277,7 +312,7 @@ void NNet::setInputs(std::vector<float> & in)
         printf("dude you messed up, have to have as many input vals as there are input nodes\n");
 }
 
-void NNet::print()
+void NNet::print() const
 {
     if (silent)
         return;
@@ -378,12 +413,15 @@ void NNet::deleteSelectedNodes()
             if (layer->numNodes > 1)
             {
                 // remove node from layer
+                // -----------------------------------------------------------------
                 printf("removing node %d from layer %d \n", selNodeID, layerID);
                 layer->nodes.erase(layer->nodes.begin() + selNodeID - eraseCounter);
                 layer->numNodes -= 1;
                 printf("success\n");
+                // -----------------------------------------------------------------
 
                 // remove associated weight from nodes in next layer
+                // -----------------------------------------------------------------
                 printf("removing weights in next layer for node :\n");
                 auto nextLayer = layer +1;
                 int nextNodeID = 0;
@@ -398,15 +436,33 @@ void NNet::deleteSelectedNodes()
                     printf("success\n");
                     nextNodeID ++;
                 }
+                // -----------------------------------------------------------------
             }
             else
             {
-            // remove layer and "connect" previous with next
-            // set numLayers -= 1
+                // TODO : Implement this
+                // remove layer and "connect" previous with next
+                // set numLayers -= 1
             }
             eraseCounter++;
         }
 
         layerID++;
     }
+}
+
+
+// Should probably name this something else, it basically evaluates the network on given input
+// returns the output of the network
+std::vector<float> NNet::inputOutput(std::vector<float> & in) const 
+{
+    setInputs(in);
+    forwardPropagate();
+
+    std::vector<float> outputs;
+    for (auto node : outputLayer->nodes)
+    {
+        outputs.push_back(node.out);
+    }
+    return outputs;
 }

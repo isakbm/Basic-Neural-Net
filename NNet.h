@@ -8,8 +8,8 @@ struct NNode
     std::vector<float> deltaWeights;
     
     float delta;  // for error propagation
-    float z;      // for storing the argument of the activation function
-    float out;    // the output of the node
+    mutable float z;      // for storing the argument of the activation function
+    mutable float out;    // the output of the node
 
     vec2 pos;
     bool isSelected; 
@@ -53,16 +53,18 @@ class NNet
         NNet(std::vector<unsigned int> & data);
 
         void randOuts();
-        void forwardPropagate();
-        void setInputs(std::vector<float> & in);
+        void forwardPropagate() const ;
+        void setInputs(std::vector<float> & in) const ;
         void randWeights(float (*rng)(void) );
         void backProp(std::vector<float> target);
         void updateWeights();
 
-        void print();
+        void print() const ;
         void test();
         
         void deleteSelectedNodes();
+
+        std::vector<float> inputOutput(std::vector<float> & in) const ;
 
         void setRho(float rate);
         void setSilent(bool b);

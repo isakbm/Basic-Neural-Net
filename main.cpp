@@ -49,8 +49,8 @@ GLuint programID2;
 GLuint VertexArrayID;
 
 GLuint quadVertexbuffer;
-
 GLuint lineGraphVertexBuffer;
+GLuint smallGraphVertexBuffer;
 
 bool toggleNetUpdate = 1;
 
@@ -80,8 +80,10 @@ static const GLfloat quadVertices[] =
 
 
 #define LIN_GRAPH_SIZE 1000
+#define SMALL_GRAPH_SIZE 150
 
 GLfloat lineGraphVertices[3*LIN_GRAPH_SIZE];
+GLfloat smallGraphVertices[3*SMALL_GRAPH_SIZE];
 
 float mRand();
 void NNetDraw(const NNet* net, mat4 proj, int mvp_loc, int GLSL_program);
@@ -89,9 +91,9 @@ void initLineGraphData(int size);
 
 void NNetInteractionUpdate(NNet* net);
 void drawLineGraph(mat4 proj, int GLSL_program);
+void drawNetFeedbackPrediction(mat4 Proj, int GLSL_program);
 
-
-std::vector<unsigned int> data = {2, 3, 5, 5,5,5,5, 1};
+std::vector<unsigned int> data = {3, 3, 5, 5, 1};
 NNet testNet = NNet(data);
 
 int main() {
@@ -108,7 +110,7 @@ int main() {
     testNet.setSilent(false);  // makes NNet::print() silent 
     testNet.randWeights(mRand);
     testNet.setRho(0.5);
-    testNet.print();
+    // testNet.print();
 
 
 
@@ -157,24 +159,50 @@ void Draw() {
     {  
         // toggleNetUpdate = 0;
 
-        float x = int(1.0 + mRand());
-        float y = int(1.0 + mRand());
-        float out = int(x) && int(y);
+        // float x = int(1.0 + mRand());
+        // float y = int(1.0 + mRand());
+        // float out = int(x) && int(y);
         
+        // printf("%d\n", int(5.0*(1.0 + mRand())));
+       
 
 
-        std::vector<float> vecIn = {x, y};
-        std::vector<float> target = {out};
+        // Labeled data point
+        // --------------------------------------------------------
+        int sampleStart = int(5.0*(1.0 + mRand()));
+        float x1 = sin(2.0*PI*(float(sampleStart) + 0)/10.0);
+        float x2 = sin(2.0*PI*(float(sampleStart) + 1)/10.0);
+        float x3 = sin(2.0*PI*(float(sampleStart) + 2)/10.0);
+        float t  = sin(2.0*PI*(float(sampleStart) + 3)/10.0);
+        // --------------------------------------------------------
 
+
+        // Updating weights via back propagation
+        // --------------------------------------------------------
+        std::vector<float> vecIn  = {x1, x2, x3};
+        std::vector<float> target = {t};
         testNet.setInputs(vecIn);
         testNet.forwardPropagate();
         testNet.backProp(target);
+     	testNet.updateWeights();
+        // --------------------------------------------------------
 
         // testNet.print();
-        testNet.updateWeights();
+       
+
+        // Displays the error
+        drawLineGraph(Projection, programID2);
+
+        // Displays prediction for RNN
+        drawNetFeedbackPrediction(Projection, programID2);
+
 
     }
-    drawLineGraph(Projection, programID2);
+    else
+    {
+        drawNetFeedbackPrediction(Projection, programID2);
+
+    }
 
     NNetDraw(&testNet, Projection, mvp_loc_1, programID);
 
@@ -189,6 +217,7 @@ void Draw() {
 void cleanGL() {
     glDeleteBuffers(1, &quadVertexbuffer);
     glDeleteBuffers(1, &lineGraphVertexBuffer);
+    glDeleteBuffers(1, &smallGraphVertexBuffer);
 
     glDeleteVertexArrays(1, &VertexArrayID);
     glDeleteProgram(programID);
@@ -255,6 +284,11 @@ void initGL() {
     glGenBuffers(1, &lineGraphVertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, lineGraphVertexBuffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(lineGraphVertices), lineGraphVertices, GL_STATIC_DRAW);  // Might want to change to GL_DYNAMIC_DRAW?
+
+    // small graph buffer data
+    glGenBuffers(1, &smallGraphVertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, smallGraphVertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(smallGraphVertices), smallGraphVertices, GL_STATIC_DRAW);
 }
 
 void windowsize_callback(GLFWwindow * /*win*/, int width, int height) { 
@@ -559,9 +593,11 @@ void drawLineGraph(mat4 Proj, int GLSL_program)
     int mvp_loc = glGetUniformLocation(GLSL_program, "MVP");
     int scale_loc = glGetUniformLocation(GLSL_program, "scale");
 
+    vec3 posAdjustment = vec3(-10.0, 0.0, 0.0);
+
     // draw first segment
     vec3 posSignalSource = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0) + (1.0/30.0)*LIN_GRAPH_SIZE*vec3(1.0, 0.0, 0.0);
-    Model = translate(posSignalSource);
+    Model = translate(posSignalSource + posAdjustment);
     MVP = Scale*Proj*Model;
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
     glUniform1f(scale_loc, 1.0);
@@ -570,7 +606,7 @@ void drawLineGraph(mat4 Proj, int GLSL_program)
 
     // draw second segment
     vec3 posTail = -(1.0/30.0)*start_loc*vec3(1.0, 0.0, 0.0);  // the factor of 1/30 stems from the initial size of the data window, look at the initLineGraph()
-    Model = translate(posTail); 
+    Model = translate(posTail + posAdjustment); 
     MVP =  Scale*Proj*Model;
     glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
     glUniform1f(scale_loc, 1.0);
@@ -589,6 +625,62 @@ void drawLineGraph(mat4 Proj, int GLSL_program)
 
     start_loc ++;
     start_loc = (start_loc < LIN_GRAPH_SIZE) ? start_loc : 0;
+}
+
+void drawNetFeedbackPrediction(mat4 Proj, int GLSL_program)
+{
+    int size = 20;
+    glUseProgram(GLSL_program);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, smallGraphVertexBuffer);
+
+    float x1 = sin(2.0*PI*(0.0)/10.0);
+    float x2 = sin(2.0*PI*(1.0)/10.0);
+    float x3 = sin(2.0*PI*(2.0)/10.0);
+
+    std::vector<float> input;
+    input.push_back(x1);
+    input.push_back(x2);
+    input.push_back(x3);
+
+    for (int i = 0; i < SMALL_GRAPH_SIZE; i++)
+    {
+        auto output = testNet.inputOutput(input);
+        input[0] = input[1];
+        input[1] = input[2];
+        input[2] = output[0];
+        
+        smallGraphVertices[3*i + 0] = (i - 0.5*SMALL_GRAPH_SIZE)/3.0;
+        smallGraphVertices[3*i + 1] = output[0];
+        smallGraphVertices[3*i + 2] = 0.0;
+    }
+    glBufferData(GL_ARRAY_BUFFER, sizeof(smallGraphVertices), smallGraphVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,(void*)0);
+
+    // int frag_scale_loc = glGetUniformLocation(GLSL_program, "scale");
+    // glUniform1f(frag_scale_loc, 40.0);
+
+    mat4 Model;
+    mat4 MVP;
+    mat4 Scale = scale((45.0/fov)*20.0*vec3(1.0, 1.0, 0.0));
+
+    int mvp_loc = glGetUniformLocation(GLSL_program, "MVP");
+    int scale_loc = glGetUniformLocation(GLSL_program, "scale");
+
+    // draw first segment
+    vec3 posSignalSource = 0.25*SMALL_GRAPH_SIZE*vec3(1.0, 0.0, 0.0);
+    Model = translate(posSignalSource);
+    MVP = Scale*Proj*Model;
+    glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, &MVP.M[0][0]); 
+    glUniform1f(scale_loc, 1.0);
+    glDrawArrays(GL_LINE_STRIP, 0, SMALL_GRAPH_SIZE);
+
+
+    glDisableVertexAttribArray(0);
+
+   
 }
 
 void initLineGraphData(int size) 
